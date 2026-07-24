@@ -4,7 +4,26 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>MCPO · Orçamentação de Montagens</title>
-<script src="https://alcdn.msauth.net/browser/2.38.3/js/msal-browser.min.js"></script>
+<script>
+// Carrega MSAL dinamicamente com fallback
+function loadMsal(){
+  return new Promise((res, rej) => {
+    if(window.msal){ res(); return; }
+    const s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/@azure/msal-browser@3.7.1/lib/msal-browser.min.js';
+    s.onload = () => res();
+    s.onerror = () => {
+      // fallback: CDN oficial Microsoft
+      const s2 = document.createElement('script');
+      s2.src = 'https://alcdn.msauth.net/browser/2.38.3/js/msal-browser.min.js';
+      s2.onload = () => res();
+      s2.onerror = () => rej(new Error('MSAL não carregou'));
+      document.head.appendChild(s2);
+    };
+    document.head.appendChild(s);
+  });
+}
+</script>
 <style>
   :root{
     --azul-escuro:#0f2d3d;
@@ -1056,15 +1075,26 @@ let msAccount    = null;
 
 async function initMsal(){
   try{
-    msalInstance = new msal.PublicClientApplication(MSAL_CONFIG);
+    // carrega a biblioteca MSAL dinamicamente
+    await loadMsal();
+
+    // MSAL 3.x usa PublicClientApplication diferente do 2.x — detectar versão
+    const MsalClass = (window.msal && window.msal.PublicClientApplication)
+      ? window.msal.PublicClientApplication
+      : null;
+
+    if(!MsalClass) throw new Error('Classe MSAL não encontrada após carregamento');
+
+    msalInstance = new MsalClass(MSAL_CONFIG);
     await msalInstance.initialize();
     const accounts = msalInstance.getAllAccounts();
     if(accounts.length){ msAccount = accounts[0]; }
     updateLoginUI();
   }catch(e){
-    console.warn('MSAL init error:', e);
-    // mesmo com erro, libera o botão
+    console.error('MSAL init error:', e);
     document.getElementById('ms-login-label').textContent = '🔑 Entrar com Microsoft';
+    document.getElementById('ms-user-info').textContent = '(histórico local — login indisponível)';
+    document.getElementById('ms-user-info').style.display = 'block';
     updateLoginUI();
   }
 }
