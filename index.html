@@ -271,6 +271,7 @@ function loadMsal(){
     <button data-tab="custos">Custos Gerais</button>
     <button data-tab="proposta">Resumo &amp; Proposta</button>
     <button data-tab="historico">Histórico</button>
+    <button data-tab="parametros" id="tab-parametros" style="display:none;">⚙ Parâmetros</button>
   </nav>
 </header>
 
@@ -542,6 +543,77 @@ function loadMsal(){
     <div id="hist-list"></div>
   </section>
 
+  <!-- ================= ABA: PARÂMETROS ================= -->
+  <section class="pane" id="pane-parametros">
+    <h2 class="pane-title">⚙ Parâmetros do Sistema</h2>
+    <p class="pane-desc">Esta aba é visível apenas para usuários autorizados. Alterações aqui afetam todos os cálculos do app.</p>
+
+    <div class="card">
+      <h3>E-mails Autorizados a Editar Parâmetros</h3>
+      <p class="pane-desc" style="margin-bottom:10px;">Adicione os e-mails Microsoft (login) que podem editar os campos de parâmetro. O e-mail deve ser exatamente igual ao usado no login.</p>
+      <div id="emails-list"></div>
+      <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;">
+        <input type="text" id="inp-novo-email" placeholder="email@empresa.com" style="flex:1;min-width:200px;border:1px solid var(--borda);border-radius:4px;padding:8px 10px;font-size:.88rem;background:#fffdf9;">
+        <button class="btn primary small" id="btn-add-email" type="button">+ Adicionar</button>
+      </div>
+      <div class="note" style="margin-top:10px;">O e-mail do usuário atual logado: <strong id="email-atual-logado">—</strong></div>
+    </div>
+
+    <div class="card">
+      <h3>Parâmetros de Encargos</h3>
+      <div class="grid" style="max-width:560px;">
+        <div class="field"><label>Valor Hora Técnica — encargos (R$)</label><input type="number" id="p-vhora-encargo" step="0.01" min="0"></div>
+        <div class="field"><label>% Montador sobre Hora Técnica</label><input type="number" id="p-pctmontador" step="0.01" min="0" max="100"></div>
+        <div class="field"><label>% Auxiliar sobre Hora Técnica</label><input type="number" id="p-pctauxiliar" step="0.01" min="0" max="100"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Valor por Metro — Tubulação (R$/metro)</h3>
+      <div class="grid" style="max-width:560px;">
+        <div class="field"><label>DN 0–350mm (MONT-002)</label><input type="number" id="p-tubdn350" step="0.01" min="0"></div>
+        <div class="field"><label>DN 355–450mm (MONT-003)</label><input type="number" id="p-tubdn450" step="0.01" min="0"></div>
+        <div class="field"><label>DN 450–600mm (MONT-004)</label><input type="number" id="p-tubdn600" step="0.01" min="0"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Valores Unitários — Pivôs</h3>
+      <div class="grid">
+        <div class="field"><label>Hospedagem (R$/dia/pessoa)</label><input type="number" id="p-vhosp" step="0.01"></div>
+        <div class="field"><label>KM Translado (R$/km)</label><input type="number" id="p-vkm" step="0.01"></div>
+        <div class="field"><label>Alimentação (R$/pessoa/dia)</label><input type="number" id="p-valim" step="0.01"></div>
+        <div class="field"><label>Trator MCPO (R$/dia)</label><input type="number" id="p-vtrator" step="0.01"></div>
+        <div class="field"><label>Hora Técnica (R$/hora)</label><input type="number" id="p-vhora" step="0.01"></div>
+        <div class="field"><label>Caminhão MCPO (R$/dia)</label><input type="number" id="p-vcaminhao" step="0.01"></div>
+        <div class="field"><label>Frete Máquinas (R$/km)</label><input type="number" id="p-vfrete" step="0.01"></div>
+        <div class="field"><label>Máquina PEAD (R$/dia)</label><input type="number" id="p-vpead" step="0.01"></div>
+        <div class="field"><label>Caminhão Munck (R$/dia)</label><input type="number" id="p-vmunck" step="0.01"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Valores Unitários — Adutora &amp; Infraestrutura</h3>
+      <div class="grid">
+        <div class="field"><label>Frete Escavadeira (R$/km)</label><input type="number" id="p-vfesc" step="0.01"></div>
+        <div class="field"><label>Escavadeira p/ Adutora (R$/metro)</label><input type="number" id="p-vesc" step="0.01"></div>
+        <div class="field"><label>Base Pivô (R$/pivô)</label><input type="number" id="p-vbase" step="0.01"></div>
+        <div class="field"><label>Casa de Bomba (R$/m²)</label><input type="number" id="p-vcasa" step="0.01"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Precificação</h3>
+      <div class="grid" style="max-width:400px;">
+        <div class="field"><label>Imposto (%)</label><input type="number" id="p-imposto" step="0.01"></div>
+      </div>
+    </div>
+
+    <div style="display:flex;gap:10px;margin-top:6px;">
+      <button class="btn primary" id="btn-salvar-params" type="button">Salvar Parâmetros</button>
+    </div>
+  </section>
+
 </main>
 
 <div class="toast" id="toast"></div>
@@ -600,8 +672,8 @@ const SERVICOS_DEFS = [
 function defaultState(){
   return {
     info:{empresa:'MAQCAMPO IRRIGAÇÃO', cliente:'', obra:'', endereco:'', vendedor:'', responsavel:'', hectares:'', numPivos:0},
-    equipe:{qtdEquipes:1, kmDiario:40, kmOrigem:110, kmLoja:120, adcHr:0, diasTrator:120, diasCaminhao:200, diasMunck:240, casaM2:164, prazoManual:null},
-    servicos:{trator:false, caminhao:true, freteMcpo:true, munck:true, escavadeira:true, basePivo:true, casaPadrao:true, maquinaPead:true, alimAlmoco:false, alimJantar:false, hospedagem:false, auxiliares:true},
+    equipe:{qtdEquipes:0, kmDiario:0, kmOrigem:0, kmLoja:0, adcHr:0, diasTrator:0, diasCaminhao:0, diasMunck:0, casaM2:0, prazoManual:null},
+    servicos:{trator:false, caminhao:false, freteMcpo:false, munck:false, escavadeira:false, basePivo:false, casaPadrao:false, maquinaPead:false, alimAlmoco:false, alimJantar:false, hospedagem:false, auxiliares:false},
     precos:{hospedagem:80, km:3.9, refeicao:80, trator:325, horaTecnica:260, caminhao:300, freteKm:8.5, maquinaPead:2500, munck:2500, freteEscavadeiraKm:13, metroEscavadeira:15, basePivo:18000, casaM2:2500, pctMontador:12, pctAuxiliar:3, tubDN350:1.45, tubDN450:1.70, tubDN600:1.80, horaEncargo:260},
     tasks:{},
     extras:[
@@ -610,7 +682,7 @@ function defaultState(){
       {desc:'Técnico de Segurança', unidade:'mensal', qtd:0, valorTotal:0},
       {desc:'Insumos Adicionais', unidade:'un', qtd:0, valorTotal:0},
     ],
-    financeiro:{desconto:0, imposto:22.15, margem:20, valorFinalManual:null},
+    financeiro:{desconto:0, imposto:22.15, margem:0, valorFinalManual:null},
     observacoes:'',
   };
 }
@@ -1744,6 +1816,216 @@ function renderAll(){
 }
 renderAll();
 initMsal();
+
+/* ============================================================
+   PARÂMETROS — armazenados no OneDrive / localStorage
+   ============================================================ */
+const PARAMS_KEY_LOCAL = 'mcpo-params';
+const PARAMS_FILENAME  = 'parametros.json';
+
+// IDs dos campos bloqueados — agora existem SOMENTE na aba Parâmetros (p-*)
+// Os campos nas outras abas são readonly quando o usuário não é autorizado
+const PARAM_FIELD_IDS = [
+  'i-vhosp','i-vkm','i-valim','i-vtrator','i-vhora','i-vcaminhao',
+  'i-vfrete','i-vpead','i-vmunck','i-vfesc','i-vesc','i-vbase','i-vcasa',
+  'i-pctmontador','i-pctauxiliar','i-vhora-encargo',
+  'i-tubdn350','i-tubdn450','i-tubdn600',
+  'i-imposto',
+];
+
+async function loadParams(){
+  if(msAccount){
+    try{
+      const token = await getGraphToken();
+      if(!token) return null;
+      const r = await fetch(
+        `https://graph.microsoft.com/v1.0/me/drive/root:/${ONEDRIVE_FOLDER}/${PARAMS_FILENAME}:/content`,
+        { headers:{ Authorization: 'Bearer ' + token } }
+      );
+      if(r.status === 404) return null;
+      if(!r.ok) return null;
+      return JSON.parse(await r.text());
+    }catch(e){ return null; }
+  }
+  try{ const r = localStorage.getItem(PARAMS_KEY_LOCAL); return r ? JSON.parse(r) : null; }
+  catch(e){ return null; }
+}
+
+async function saveParams(params){
+  const json = JSON.stringify(params, null, 2);
+  if(msAccount){
+    await ensureFolder();
+    return await graphPut(
+      `/me/drive/root:/${ONEDRIVE_FOLDER}/${PARAMS_FILENAME}:/content`,
+      new TextEncoder().encode(json)
+    );
+  }
+  try{ localStorage.setItem(PARAMS_KEY_LOCAL, json); return true; }
+  catch(e){ return false; }
+}
+
+// Estrutura de parâmetros globais (separado do state de obra)
+let globalParams = {
+  emailsAutorizados: [],
+  precos: { ...defaultState().precos },
+  imposto: 22.15,
+};
+
+function emailUsuarioAtual(){
+  return msAccount ? (msAccount.username || '').toLowerCase() : '';
+}
+
+function usuarioAutorizado(){
+  if(!msAccount) return false;
+  const email = emailUsuarioAtual();
+  return globalParams.emailsAutorizados.map(e=>e.toLowerCase()).includes(email);
+}
+
+function aplicarBloqueio(){
+  const autorizado = usuarioAutorizado();
+  PARAM_FIELD_IDS.forEach(id=>{
+    const el = document.getElementById(id);
+    if(!el) return;
+    el.disabled = !autorizado;
+    el.style.background = autorizado ? '#fffdf9' : 'var(--areia-escura)';
+    el.style.cursor = autorizado ? '' : 'not-allowed';
+    el.title = autorizado ? '' : 'Apenas usuários autorizados podem editar este parâmetro';
+  });
+  // mostrar/ocultar aba parâmetros
+  const tabParam = document.getElementById('tab-parametros');
+  if(tabParam) tabParam.style.display = autorizado ? '' : 'none';
+}
+
+function aplicarParamsAoState(){
+  // Copia os preços globais para o state atual
+  Object.assign(state.precos, globalParams.precos);
+  state.financeiro.imposto = globalParams.imposto;
+  fillSimpleInputsFromState();
+  recalc();
+}
+
+async function carregarEAplicarParams(){
+  const p = await loadParams();
+  if(p){
+    if(p.emailsAutorizados) globalParams.emailsAutorizados = p.emailsAutorizados;
+    if(p.precos) globalParams.precos = { ...defaultState().precos, ...p.precos };
+    if(p.imposto !== undefined) globalParams.imposto = p.imposto;
+  }
+  aplicarParamsAoState();
+  aplicarBloqueio();
+  renderAbaParametros();
+}
+
+/* ---------- Aba Parâmetros: render e bindings ---------- */
+function renderAbaParametros(){
+  // preencher e-mails
+  const wrap = document.getElementById('emails-list');
+  if(!wrap) return;
+  wrap.innerHTML = '';
+  if(!globalParams.emailsAutorizados.length){
+    wrap.innerHTML = '<div style="color:var(--texto-suave);font-size:.85rem;padding:6px 0;">Nenhum e-mail cadastrado ainda.</div>';
+  }
+  globalParams.emailsAutorizados.forEach((email, i)=>{
+    const div = document.createElement('div');
+    div.style.cssText = 'display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--areia-escura);font-size:.88rem;';
+    div.innerHTML = `<span style="flex:1;">👤 ${email}</span><button class="btn danger small" data-rem-email="${i}" type="button">remover</button>`;
+    wrap.appendChild(div);
+  });
+  wrap.querySelectorAll('button[data-rem-email]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      globalParams.emailsAutorizados.splice(Number(btn.dataset.remEmail), 1);
+      renderAbaParametros();
+    });
+  });
+
+  // atualizar e-mail atual logado
+  const elEmail = document.getElementById('email-atual-logado');
+  if(elEmail) elEmail.textContent = emailUsuarioAtual() || '(não logado)';
+
+  // preencher campos de preços na aba parâmetros
+  const P = globalParams.precos;
+  const map = {
+    'p-vhora-encargo': P.horaEncargo, 'p-pctmontador': P.pctMontador, 'p-pctauxiliar': P.pctAuxiliar,
+    'p-tubdn350': P.tubDN350, 'p-tubdn450': P.tubDN450, 'p-tubdn600': P.tubDN600,
+    'p-vhosp': P.hospedagem, 'p-vkm': P.km, 'p-valim': P.refeicao,
+    'p-vtrator': P.trator, 'p-vhora': P.horaTecnica, 'p-vcaminhao': P.caminhao,
+    'p-vfrete': P.freteKm, 'p-vpead': P.maquinaPead, 'p-vmunck': P.munck,
+    'p-vfesc': P.freteEscavadeiraKm, 'p-vesc': P.metroEscavadeira,
+    'p-vbase': P.basePivo, 'p-vcasa': P.casaM2,
+    'p-imposto': globalParams.imposto,
+  };
+  Object.entries(map).forEach(([id, val])=>{
+    const el = document.getElementById(id);
+    if(el) el.value = val;
+  });
+}
+
+// Botão adicionar e-mail
+document.getElementById('btn-add-email').addEventListener('click', ()=>{
+  const inp = document.getElementById('inp-novo-email');
+  const email = (inp.value||'').trim().toLowerCase();
+  if(!email || !email.includes('@')){ toast('Digite um e-mail válido.'); return; }
+  if(globalParams.emailsAutorizados.map(e=>e.toLowerCase()).includes(email)){
+    toast('E-mail já cadastrado.'); return;
+  }
+  globalParams.emailsAutorizados.push(email);
+  inp.value = '';
+  renderAbaParametros();
+});
+document.getElementById('inp-novo-email').addEventListener('keydown', e=>{
+  if(e.key==='Enter') document.getElementById('btn-add-email').click();
+});
+
+// Botão salvar parâmetros
+document.getElementById('btn-salvar-params').addEventListener('click', async ()=>{
+  // ler valores da aba parâmetros
+  const lv = id => n(document.getElementById(id)?.value);
+  globalParams.precos = {
+    ...globalParams.precos,
+    horaEncargo:   lv('p-vhora-encargo'),
+    pctMontador:   lv('p-pctmontador'),
+    pctAuxiliar:   lv('p-pctauxiliar'),
+    tubDN350:      lv('p-tubdn350'),
+    tubDN450:      lv('p-tubdn450'),
+    tubDN600:      lv('p-tubdn600'),
+    hospedagem:    lv('p-vhosp'),
+    km:            lv('p-vkm'),
+    refeicao:      lv('p-valim'),
+    trator:        lv('p-vtrator'),
+    horaTecnica:   lv('p-vhora'),
+    caminhao:      lv('p-vcaminhao'),
+    freteKm:       lv('p-vfrete'),
+    maquinaPead:   lv('p-vpead'),
+    munck:         lv('p-vmunck'),
+    freteEscavadeiraKm: lv('p-vfesc'),
+    metroEscavadeira:   lv('p-vesc'),
+    basePivo:      lv('p-vbase'),
+    casaM2:        lv('p-vcasa'),
+  };
+  globalParams.imposto = lv('p-imposto');
+
+  const ok = await saveParams(globalParams);
+  if(ok){
+    aplicarParamsAoState();
+    aplicarBloqueio();
+    toast('Parâmetros salvos com sucesso!');
+  } else {
+    toast('Erro ao salvar parâmetros.');
+  }
+});
+
+// Carregar parâmetros quando o login for concluído
+const _origUpdateLoginUI = updateLoginUI;
+window.updateLoginUI = function(){
+  _origUpdateLoginUI();
+  carregarEAplicarParams();
+  const elEmail = document.getElementById('email-atual-logado');
+  if(elEmail) elEmail.textContent = emailUsuarioAtual() || '(não logado)';
+};
+updateLoginUI = window.updateLoginUI;
+
+// Carregar parâmetros na inicialização (mesmo sem login, carrega do localStorage)
+carregarEAplicarParams();
 </script>
 </body>
 </html>
