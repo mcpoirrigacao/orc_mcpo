@@ -303,48 +303,6 @@ function loadMsal(){
     <h2 class="pane-title">Tarefas de Montagem</h2>
     <p class="pane-desc">Preencha a quantidade de cada serviço realizado na obra. <span class="tag pct">HORA TÉCNICA</span> paga por hora técnica × valor hora × percentual. <span class="tag fix">PREÇO POR METRO</span> paga um valor fixo por metro instalado.</p>
 
-    <div class="card">
-      <h3>Parâmetros de Encargos</h3>
-      <div class="grid" style="max-width:560px;">
-        <div class="field">
-          <label>Valor Hora Técnica — encargos (R$)</label>
-          <input type="number" id="i-vhora-encargo" step="0.01" min="0">
-        </div>
-        <div class="field">
-          <label>% Montador sobre Hora Técnica</label>
-          <input type="number" id="i-pctmontador" step="0.01" min="0" max="100">
-        </div>
-        <div class="field">
-          <label>% Auxiliar sobre Hora Técnica</label>
-          <input type="number" id="i-pctauxiliar" step="0.01" min="0" max="100">
-        </div>
-        <div class="field readonly">
-          <label>Encargo por hora (Montador + Auxiliar)</label>
-          <input type="text" id="o-encargo-hora" disabled>
-        </div>
-      </div>
-      <div class="note" style="margin-top:8px;">O <strong>Valor Hora Técnica</strong> aqui é a base de cálculo dos encargos de mão de obra (pagamento de montador e auxiliar). O valor de hora técnica em <em>Custos Gerais</em> é o custo cobrado à obra por hora trabalhada — são campos independentes.</div>
-    </div>
-
-    <div class="card">
-      <h3>Valor por Metro — Tubulação (R$/metro)</h3>
-      <div class="grid" style="max-width:560px;">
-        <div class="field">
-          <label>DN 0–350mm (MONT-002)</label>
-          <input type="number" id="i-tubdn350" step="0.01" min="0">
-        </div>
-        <div class="field">
-          <label>DN 355–450mm (MONT-003)</label>
-          <input type="number" id="i-tubdn450" step="0.01" min="0">
-        </div>
-        <div class="field">
-          <label>DN 450–600mm (MONT-004)</label>
-          <input type="number" id="i-tubdn600" step="0.01" min="0">
-        </div>
-      </div>
-      <div class="note" style="margin-top:8px;">Valor pago por metro instalado — aplicado igualmente a montador e auxiliar para cada faixa de diâmetro.</div>
-    </div>
-
     <div id="task-groups"></div>
 
     <div class="totals-strip">
@@ -353,6 +311,14 @@ function loadMsal(){
       <div class="total-box"><div class="label">Pagamento Auxiliar</div><div class="value sm" id="out-laboraux">R$ 0</div></div>
       <div class="total-box accent"><div class="label">Encargos Time (total mão de obra)</div><div class="value sm" id="out-encargos">R$ 0</div></div>
     </div>
+    <!-- campos ocultos mantidos para binding -->
+    <input type="hidden" id="i-vhora-encargo">
+    <input type="hidden" id="i-pctmontador">
+    <input type="hidden" id="i-pctauxiliar">
+    <input type="hidden" id="i-tubdn350">
+    <input type="hidden" id="i-tubdn450">
+    <input type="hidden" id="i-tubdn600">
+    <input type="hidden" id="o-encargo-hora">
   </section>
 
   <!-- ================= ABA: CUSTOS GERAIS ================= -->
@@ -1891,8 +1857,6 @@ const PARAMS_KEY_LOCAL = 'mcpo-params';
 const PARAM_FIELD_IDS = [
   'i-vhosp','i-vkm','i-valim','i-vtrator','i-vhora','i-vcaminhao',
   'i-vfrete','i-vpead','i-vmunck','i-vfesc','i-vesc','i-vbase','i-vcasa',
-  'i-pctmontador','i-pctauxiliar','i-vhora-encargo',
-  'i-tubdn350','i-tubdn450','i-tubdn600',
   'i-imposto',
 ];
 
