@@ -592,8 +592,18 @@ function loadMsal(){
 
 </main>
 
+<!-- Overlay de login obrigatório -->
+<div id="overlay-login" style="display:none;position:fixed;inset:0;background:var(--azul-escuro);z-index:1000;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:30px;">
+  <div style="background:#fff;border-radius:10px;padding:40px 32px;max-width:420px;width:100%;">
+    <div style="font-size:3rem;margin-bottom:16px;">🔐</div>
+    <h2 style="font-family:var(--fonte-titulo);color:var(--azul-escuro);margin:0 0 10px;">MCPO Orçamentos</h2>
+    <p style="color:var(--texto-suave);font-size:.9rem;margin:0 0 24px;">Faça login com sua conta Microsoft para acessar o sistema.</p>
+    <button id="btn-login-overlay" class="btn primary" style="width:100%;font-size:.95rem;padding:12px;" type="button">🔑 Entrar com Microsoft</button>
+  </div>
+</div>
+
 <!-- Overlay de acesso negado -->
-<div id="overlay-acesso-negado" style="display:none;position:fixed;inset:0;background:var(--azul-escuro);z-index:999;display:none;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:30px;">
+<div id="overlay-acesso-negado" style="display:none;position:fixed;inset:0;background:var(--azul-escuro);z-index:999;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:30px;">
   <div style="background:#fff;border-radius:10px;padding:40px 32px;max-width:420px;width:100%;">
     <div style="font-size:3rem;margin-bottom:16px;">🔒</div>
     <h2 style="font-family:var(--fonte-titulo);color:var(--azul-escuro);margin:0 0 10px;">Acesso Restrito</h2>
@@ -1372,20 +1382,40 @@ async function renderHistorico(filtro=''){
   const wrap = document.getElementById('hist-list');
   wrap.innerHTML = '<div class="empty-state">Carregando histórico...</div>';
   _histCache = await loadHistorico();
-  const busca = filtro.toLowerCase().trim();
-  const lista = _histCache.slice().reverse().filter(item=>{
-    if(!busca) return true;
-    return (item.data.info.cliente||'').toLowerCase().includes(busca)
-        || (item.data.info.obra||'').toLowerCase().includes(busca)
-        || (item.data.info.vendedor||'').toLowerCase().includes(busca);
+
+  const nivel = nivelAcesso();
+  const emailAtual = emailUsuarioAtual();
+
+  // Filtro por nível: comum vê só os seus, admin vê todos
+  let lista = _histCache.slice().reverse().filter(item=>{
+    if(nivel === 'admin') return true;
+    // comum: só obras salvas pelo próprio e-mail
+    const by = item.savedBy || {};
+    return (by.email || '').toLowerCase() === emailAtual;
   });
+
+  // Filtro de busca
+  const busca = filtro.toLowerCase().trim();
+  if(busca){
+    lista = lista.filter(item=>
+      (item.data.info.cliente||'').toLowerCase().includes(busca) ||
+      (item.data.info.obra||'').toLowerCase().includes(busca) ||
+      (item.data.info.vendedor||'').toLowerCase().includes(busca)
+    );
+  }
 
   if(!_histCache.length){
     wrap.innerHTML = '<div class="empty-state">Nenhuma obra salva ainda. Vá até "Resumo &amp; Proposta" e clique em "Salvar no Histórico".</div>';
     return;
   }
-  if(!lista.length){
+  if(!lista.length && busca){
     wrap.innerHTML = '<div class="empty-state">Nenhuma obra encontrada para "'+filtro+'".</div>';
+    return;
+  }
+  if(!lista.length){
+    wrap.innerHTML = nivel === 'comum'
+      ? '<div class="empty-state">Você ainda não salvou nenhuma obra. Preencha um orçamento e salve no Histórico.</div>'
+      : '<div class="empty-state">Nenhuma obra no histórico.</div>';
     return;
   }
   wrap.innerHTML='';
@@ -1914,23 +1944,41 @@ function usuarioAutorizado(){ return nivelAcesso() === 'admin'; }
 
 function aplicarControleAcesso(){
   const nivel = nivelAcesso();
+  const overlayLogin = document.getElementById('overlay-login');
+  const overlayNegado = document.getElementById('overlay-acesso-negado');
 
-  // Overlay de acesso negado
-  const overlay = document.getElementById('overlay-acesso-negado');
-  if(nivel === 'bloqueado'){
-    overlay.style.display = 'flex';
-    document.getElementById('overlay-email-info').textContent =
-      'Logado como: ' + emailUsuarioAtual();
+  // 1 — Sem login: bloqueia tudo com overlay de login
+  if(nivel === 'deslogado'){
+    overlayLogin.style.display = 'flex';
+    overlayNegado.style.display = 'none';
+    // desabilitar todas as abas e inputs
+    document.querySelectorAll('nav.tabs button').forEach(b=>b.disabled=true);
     return;
-  } else {
-    overlay.style.display = 'none';
   }
+  overlayLogin.style.display = 'none';
+  document.querySelectorAll('nav.tabs button').forEach(b=>b.disabled=false);
 
-  // Aba parâmetros — só admin
+  // 2 — Logado mas bloqueado
+  if(nivel === 'bloqueado'){
+    overlayNegado.style.display = 'flex';
+    document.getElementById('overlay-email-info').textContent = 'Logado como: ' + emailUsuarioAtual();
+    return;
+  }
+  overlayNegado.style.display = 'none';
+
+  // 3 — Aba parâmetros: só admin
   const tabParam = document.getElementById('tab-parametros');
   if(tabParam) tabParam.style.display = nivel === 'admin' ? '' : 'none';
 
-  // Campos de parâmetro nas abas normais — sempre bloqueados para todos
+  // Se usuário comum estiver na aba parâmetros, redirecionar para obra
+  if(nivel === 'comum'){
+    const paneParam = document.getElementById('pane-parametros');
+    if(paneParam && paneParam.classList.contains('active')){
+      document.querySelector('nav.tabs button[data-tab="obra"]').click();
+    }
+  }
+
+  // 4 — Campos de parâmetro nas abas normais — sempre bloqueados para todos
   PARAM_FIELD_IDS.forEach(id=>{
     const el = document.getElementById(id);
     if(!el) return;
@@ -1940,9 +1988,8 @@ function aplicarControleAcesso(){
     el.title = 'Editável apenas na aba Parâmetros por administradores';
   });
 
-  // Campos p-* na aba parâmetros — só admin
-  const paramInputs = document.querySelectorAll('#pane-parametros input[type=number], #pane-parametros input[type=text]');
-  paramInputs.forEach(el=>{
+  // 5 — Campos p-* na aba parâmetros — só admin
+  document.querySelectorAll('#pane-parametros input[type=number], #pane-parametros input[type=text]').forEach(el=>{
     if(el.id === 'inp-novo-email' || el.id === 'inp-novo-email-comum') return;
     el.disabled = nivel !== 'admin';
     el.style.background = nivel === 'admin' ? '#fffdf9' : 'var(--areia-escura)';
@@ -2184,6 +2231,15 @@ document.querySelector('.brand-mark').addEventListener('click', ()=>{
     tentarAcessoAdmin();
   }
 });
+
+// Botão de login no overlay inicial
+document.getElementById('btn-login-overlay').addEventListener('click', ()=>{
+  document.getElementById('btn-ms-login').click();
+});
+
+// Mostrar overlay de login imediatamente — bloqueia tudo até MSAL inicializar e confirmar sessão
+document.getElementById('overlay-login').style.display = 'flex';
+document.querySelectorAll('nav.tabs button').forEach(b=>b.disabled=true);
 </script>
 </body>
 </html>
