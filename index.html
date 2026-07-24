@@ -1149,8 +1149,6 @@ function spPath(filename){
   return `/${SP_BIBLIOTECA}/${SP_PASTA}/${filename}`;
 }
 
-// Endpoint base do drive do site SharePoint
-const SP_DRIVE_BASE = `https://graph.microsoft.com/v1.0/sites/${SP_SITE}/drive/root:`;
 const HIST_KEY        = 'mcpo-historico-obras'; // fallback localStorage
 
 let msalInstance = null;
@@ -1267,15 +1265,25 @@ async function graphGet(path){
   return r.json();
 }
 
+// Codifica apenas os segmentos do path, não as barras
+function spEncodePath(path){
+  return path.split('/').map(seg => encodeURIComponent(seg)).join('/');
+}
+
 async function graphPut(spFilePath, body){
   const token = await getGraphToken();
   if(!token) return false;
-  const url = SP_DRIVE_BASE + encodeURIComponent(spFilePath) + ':/content';
+  // URL correta: /sites/{site}/drive/root:{path}:/content
+  const url = `https://graph.microsoft.com/v1.0/sites/${SP_SITE}/drive/root:${spEncodePath(spFilePath)}:/content`;
   const r = await fetch(url, {
     method: 'PUT',
     headers:{ Authorization: 'Bearer ' + token, 'Content-Type': 'application/octet-stream' },
     body
   });
+  if(!r.ok){
+    const err = await r.text().catch(()=>'');
+    console.error('graphPut error', r.status, err);
+  }
   return r.ok;
 }
 
@@ -1283,20 +1291,19 @@ async function graphPut(spFilePath, body){
 async function ensureFolder(){
   const token = await getGraphToken();
   if(!token) return false;
-  // Cria pasta pai se necessário (Orçamentos Montagem)
-  const pastaBase = `/${SP_BIBLIOTECA}/Orçamentos Montagem`;
-  const pastaFull = `/${SP_BIBLIOTECA}/${SP_PASTA}`;
-  for(const pasta of [pastaBase, pastaFull]){
-    const nome = pasta.split('/').pop();
-    const pai  = pasta.slice(0, pasta.lastIndexOf('/'));
-    await fetch(
-      SP_DRIVE_BASE + encodeURIComponent(pai) + ':/children',
-      {
-        method: 'POST',
-        headers:{ Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: nome, folder:{}, '@microsoft.graph.conflictBehavior':'fail' })
-      }
-    );
+  // Pastas a garantir em ordem hierárquica
+  const pastas = [
+    { pai: `/${SP_BIBLIOTECA}`,                    nome: 'Orçamentos Montagem' },
+    { pai: `/${SP_BIBLIOTECA}/Orçamentos Montagem`, nome: 'Historico_montagem'  },
+  ];
+  for(const { pai, nome } of pastas){
+    const url = `https://graph.microsoft.com/v1.0/sites/${SP_SITE}/drive/root:${spEncodePath(pai)}:/children`;
+    await fetch(url, {
+      method: 'POST',
+      headers:{ Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: nome, folder:{}, '@microsoft.graph.conflictBehavior':'fail' })
+    });
+    // 409 = já existe — ignoramos; outros erros também ignoramos pois a pasta pode já existir
   }
   return true;
 }
@@ -1312,7 +1319,7 @@ async function loadHistorico(){
     try{
       const token = await getGraphToken();
       if(!token) return [];
-      const url = SP_DRIVE_BASE + encodeURIComponent(spPath(HIST_FILENAME)) + ':/content';
+      const url = `https://graph.microsoft.com/v1.0/sites/${SP_SITE}/drive/root:${spEncodePath(spPath(HIST_FILENAME))}:/content`;
       const r = await fetch(url, { headers:{ Authorization: 'Bearer ' + token } });
       if(r.status === 404) return [];
       if(!r.ok) return [];
@@ -1845,7 +1852,7 @@ async function loadParams(){
     try{
       const token = await getGraphToken();
       if(!token) return null;
-      const url = SP_DRIVE_BASE + encodeURIComponent(spPath(PARAMS_FILENAME)) + ':/content';
+      const url = `https://graph.microsoft.com/v1.0/sites/${SP_SITE}/drive/root:${spEncodePath(spPath(PARAMS_FILENAME))}:/content`;
       const r = await fetch(url, { headers:{ Authorization: 'Bearer ' + token } });
       if(r.status === 404) return null;
       if(!r.ok) return null;
@@ -1885,17 +1892,34 @@ function usuarioAutorizado(){
 
 function aplicarBloqueio(){
   const autorizado = usuarioAutorizado();
+
+  // Campos nas abas normais (i-*) — SEMPRE bloqueados para todos
+  // Só são editáveis na aba Parâmetros (p-*)
   PARAM_FIELD_IDS.forEach(id=>{
     const el = document.getElementById(id);
     if(!el) return;
+    el.disabled = true;
+    el.style.background = 'var(--areia-escura)';
+    el.style.cursor = 'not-allowed';
+    el.title = 'Editável apenas na aba Parâmetros por usuários autorizados';
+  });
+
+  // Aba Parâmetros e seus campos (p-*) — só para autorizados
+  const tabParam = document.getElementById('tab-parametros');
+  if(tabParam) tabParam.style.display = autorizado ? '' : 'none';
+
+  // Campos p-* na aba Parâmetros
+  const paramInputs = document.querySelectorAll('#pane-parametros input[type=number], #pane-parametros input[type=text]');
+  paramInputs.forEach(el=>{
+    if(el.id === 'inp-novo-email') return; // campo de adicionar e-mail sempre editável para autorizados
     el.disabled = !autorizado;
     el.style.background = autorizado ? '#fffdf9' : 'var(--areia-escura)';
     el.style.cursor = autorizado ? '' : 'not-allowed';
-    el.title = autorizado ? '' : 'Apenas usuários autorizados podem editar este parâmetro';
   });
-  // mostrar/ocultar aba parâmetros
-  const tabParam = document.getElementById('tab-parametros');
-  if(tabParam) tabParam.style.display = autorizado ? '' : 'none';
+  const btnSalvar = document.getElementById('btn-salvar-params');
+  if(btnSalvar) btnSalvar.disabled = !autorizado;
+  const btnAddEmail = document.getElementById('btn-add-email');
+  if(btnAddEmail) btnAddEmail.disabled = !autorizado;
 }
 
 function aplicarParamsAoState(){
@@ -2047,13 +2071,16 @@ function tentarAcessoAdmin(){
   const senha = prompt('🔐 Senha de primeiro acesso (configuração inicial):');
   if(senha === null) return; // cancelou
   if(senha === SENHA_ADMIN){
-    // libera aba parâmetros temporariamente
+    // libera aba parâmetros temporariamente — sem desbloquear campos nas outras abas
     const tabParam = document.getElementById('tab-parametros');
     if(tabParam) tabParam.style.display = '';
-    PARAM_FIELD_IDS.forEach(id=>{
-      const el = document.getElementById(id);
-      if(el){ el.disabled = false; el.style.background = '#fffdf9'; el.style.cursor = ''; }
-    });
+    // habilita apenas os campos p-* da aba parâmetros
+    const paramInputs = document.querySelectorAll('#pane-parametros input');
+    paramInputs.forEach(el=>{ el.disabled = false; el.style.background = '#fffdf9'; el.style.cursor = ''; });
+    const btnSalvar = document.getElementById('btn-salvar-params');
+    if(btnSalvar) btnSalvar.disabled = false;
+    const btnAddEmail = document.getElementById('btn-add-email');
+    if(btnAddEmail) btnAddEmail.disabled = false;
     renderAbaParametros();
     document.querySelector('nav.tabs button[data-tab="parametros"]').click();
     toast('✅ Acesso administrativo liberado. Cadastre os e-mails autorizados e salve.');
