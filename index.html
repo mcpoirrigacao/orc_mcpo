@@ -2024,8 +2024,61 @@ window.updateLoginUI = function(){
 };
 updateLoginUI = window.updateLoginUI;
 
-// Carregar parâmetros na inicialização (mesmo sem login, carrega do localStorage)
-carregarEAplicarParams();
+/* ============================================================
+   ACESSO INICIAL — Ctrl+Shift+P ou 5 cliques no título
+   Só funciona quando não há e-mails cadastrados ainda
+   ============================================================ */
+const SENHA_ADMIN = 'MCPO@admin2024';
+let cliquesLogo = 0;
+let timerCliquesLogo = null;
+
+function tentarAcessoAdmin(){
+  // Só permite se não há e-mails cadastrados ainda
+  if(globalParams.emailsAutorizados.length > 0){
+    toast('Parâmetros já configurados. Use seu e-mail autorizado para acessar.');
+    return;
+  }
+  if(!msAccount){
+    toast('Faça login com Microsoft antes de configurar os parâmetros.');
+    return;
+  }
+  const senha = prompt('🔐 Senha de primeiro acesso (configuração inicial):');
+  if(senha === null) return; // cancelou
+  if(senha === SENHA_ADMIN){
+    // libera aba parâmetros temporariamente
+    const tabParam = document.getElementById('tab-parametros');
+    if(tabParam) tabParam.style.display = '';
+    PARAM_FIELD_IDS.forEach(id=>{
+      const el = document.getElementById(id);
+      if(el){ el.disabled = false; el.style.background = '#fffdf9'; el.style.cursor = ''; }
+    });
+    renderAbaParametros();
+    document.querySelector('nav.tabs button[data-tab="parametros"]').click();
+    toast('✅ Acesso administrativo liberado. Cadastre os e-mails autorizados e salve.');
+  } else {
+    toast('❌ Senha incorreta.');
+  }
+}
+
+// Atalho teclado: Ctrl + Shift + P
+document.addEventListener('keydown', e=>{
+  if(e.ctrlKey && e.shiftKey && e.key === 'P'){
+    e.preventDefault();
+    tentarAcessoAdmin();
+  }
+});
+
+// 5 cliques rápidos no título (mobile friendly)
+document.querySelector('.brand-mark').style.cursor = 'pointer';
+document.querySelector('.brand-mark').addEventListener('click', ()=>{
+  cliquesLogo++;
+  clearTimeout(timerCliquesLogo);
+  timerCliquesLogo = setTimeout(()=>{ cliquesLogo = 0; }, 2000);
+  if(cliquesLogo >= 5){
+    cliquesLogo = 0;
+    tentarAcessoAdmin();
+  }
+});
 </script>
 </body>
 </html>
