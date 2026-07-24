@@ -1340,11 +1340,8 @@ async function saveHistorico(list){
    SALVAR EXCEL NO ONEDRIVE (além de baixar localmente)
    ============================================================ */
 async function salvarExcelOneDrive(wbBytes, filename){
-  if(!msAccount) return;
-  await ensureFolder();
-  const ok = await graphPut(spPath(filename), wbBytes);
-  if(ok) toast('Excel salvo no SharePoint: ' + SP_PASTA + '/' + filename);
-  else    toast('Excel baixado localmente (falha ao salvar no SharePoint).');
+  // Excel vai apenas para Downloads — não salva no SharePoint
+  return;
 }
 
 let _histCache = [];
