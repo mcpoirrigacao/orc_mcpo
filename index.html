@@ -1296,6 +1296,7 @@ async function renderHistorico(filtro=''){
         <b>${item.data.info.cliente || 'Cliente não informado'} — ${item.data.info.obra || 'Obra sem nome'}</b>
         <span style="display:block;margin-top:2px;">
           Salvo em ${new Date(item.savedAt).toLocaleString('pt-BR')}
+          &nbsp;·&nbsp; <span style="color:var(--azul-claro);font-weight:600;">👤 ${item.savedBy ? (item.savedBy.nome || item.savedBy.email || 'Não identificado') : 'Não identificado'}</span>
           &nbsp;·&nbsp; Vendedor: ${item.data.info.vendedor||'—'}
           &nbsp;·&nbsp; Pivôs: ${item.data.info.numPivos||0}
           &nbsp;·&nbsp; Prazo: ${r_item.prazoEstimado} dias
@@ -1352,14 +1353,18 @@ document.getElementById('hist-busca').addEventListener('input', e=>{
 document.getElementById('btn-save-hist').addEventListener('click', async ()=>{
   const r = LAST || compute();
   const list = await loadHistorico();
+  const savedBy = msAccount
+    ? { nome: msAccount.name || '', email: msAccount.username || '' }
+    : { nome: 'Não identificado', email: '' };
   list.push({
     id: 'obra-'+Date.now()+'-'+Math.random().toString(36).slice(2,7),
     savedAt: Date.now(),
+    savedBy,
     valorFinal: r.valorFinal,
     data: JSON.parse(JSON.stringify(state)),
   });
   const ok = await saveHistorico(list);
-  toast(ok ? 'Obra salva no histórico!' : 'Não foi possível salvar agora.');
+  toast(ok ? 'Obra salva por ' + savedBy.nome + '!' : 'Não foi possível salvar agora.');
 });
 
 document.querySelector('nav.tabs button[data-tab="historico"]').addEventListener('click', ()=>renderHistorico());
@@ -1565,13 +1570,16 @@ async function exportarHistoricoExcel(){
   const wb = XLSX.utils.book_new();
 
   /* aba RESUMO: uma linha por obra */
-  const cabecalho = ['Data Salvo','Cliente','Obra','Vendedor','Resp. Técnico','Área','Pivôs','TMO (h)','Prazo (dias)','Equipes','Adutora (m)','Custo Total (R$)','Desconto (%)','Imposto (%)','Margem (%)','Valor Proposta (R$)','Lucro Líquido (R$)','Margem Real (%)'];
+  const cabecalho = ['Data Salvo','Salvo Por','Email','Cliente','Obra','Vendedor','Resp. Técnico','Área','Pivôs','TMO (h)','Prazo (dias)','Equipes','Adutora (m)','Custo Total (R$)','Desconto (%)','Imposto (%)','Margem (%)','Valor Proposta (R$)','Lucro Líquido (R$)','Margem Real (%)'];
   const rows = [cabecalho];
   list.forEach(item=>{
     const r = computeFromState(item.data);
     const s = item.data;
+    const by = item.savedBy || {};
     rows.push([
       new Date(item.savedAt).toLocaleString('pt-BR'),
+      by.nome || 'Não identificado',
+      by.email || '',
       s.info.cliente, s.info.obra, s.info.vendedor, s.info.responsavel,
       s.info.hectares, s.info.numPivos,
       r.tmoTotal, r.prazoEstimado, s.equipe.qtdEquipes,
