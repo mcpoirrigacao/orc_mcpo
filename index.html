@@ -1,0 +1,1693 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MCPO · Orçamentação de Montagens</title>
+<script src="https://alcdn.msauth.net/browser/2.38.3/js/msal-browser.min.js"></script>
+<style>
+  :root{
+    --azul-escuro:#0f2d3d;
+    --azul:#12495f;
+    --azul-claro:#1f7a8c;
+    --areia:#f4efe6;
+    --areia-escura:#e8dfd0;
+    --ferrugem:#c1541c;
+    --verde:#4c7a3f;
+    --texto:#1c2a2e;
+    --texto-suave:#5b6b6e;
+    --branco:#ffffff;
+    --borda:#d9d0bf;
+    --erro:#a3312a;
+    --raio:6px;
+    --fonte-titulo: 'Georgia', 'Times New Roman', serif;
+    --fonte-corpo: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    --fonte-dado: 'Courier New', monospace;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    font-family:var(--fonte-corpo);
+    background:var(--areia);
+    color:var(--texto);
+    line-height:1.4;
+    -webkit-font-smoothing:antialiased;
+  }
+  header.app-header{
+    background:linear-gradient(135deg,var(--azul-escuro),var(--azul));
+    color:var(--branco);
+    padding:18px 20px 14px;
+    position:sticky;
+    top:0;
+    z-index:50;
+    box-shadow:0 2px 10px rgba(0,0,0,.25);
+  }
+  .brand-row{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;}
+  .brand-mark{
+    font-family:var(--fonte-titulo);
+    font-size:1.5rem;
+    font-weight:700;
+    letter-spacing:.5px;
+  }
+  .brand-sub{
+    font-size:.72rem;
+    text-transform:uppercase;
+    letter-spacing:1.5px;
+    color:#bcd7de;
+  }
+  nav.tabs{
+    display:flex;
+    gap:2px;
+    margin-top:14px;
+    overflow-x:auto;
+    scrollbar-width:none;
+    border-bottom:1px solid rgba(255,255,255,.15);
+  }
+  nav.tabs::-webkit-scrollbar{display:none;}
+  nav.tabs button{
+    flex:0 0 auto;
+    background:transparent;
+    border:none;
+    color:#a9c8cf;
+    padding:9px 14px;
+    font-size:.82rem;
+    font-weight:600;
+    letter-spacing:.2px;
+    cursor:pointer;
+    border-bottom:3px solid transparent;
+    white-space:nowrap;
+    transition:color .15s, border-color .15s;
+  }
+  nav.tabs button.active{
+    color:#ffffff;
+    border-bottom:3px solid var(--ferrugem);
+  }
+  nav.tabs button:hover{color:#ffffff;}
+
+  main{max-width:1100px;margin:0 auto;padding:18px 14px 90px;}
+  section.pane{display:none;animation:fade .18s ease;}
+  section.pane.active{display:block;}
+  @keyframes fade{from{opacity:0;transform:translateY(4px);}to{opacity:1;transform:translateY(0);}}
+
+  h2.pane-title{
+    font-family:var(--fonte-titulo);
+    font-size:1.35rem;
+    margin:4px 0 4px;
+    color:var(--azul-escuro);
+  }
+  p.pane-desc{color:var(--texto-suave);font-size:.86rem;margin:0 0 18px;}
+
+  .card{
+    background:var(--branco);
+    border:1px solid var(--borda);
+    border-radius:var(--raio);
+    padding:16px;
+    margin-bottom:16px;
+  }
+  .card h3{
+    margin:0 0 12px;
+    font-size:.78rem;
+    text-transform:uppercase;
+    letter-spacing:1px;
+    color:var(--azul-claro);
+    border-bottom:1px solid var(--areia-escura);
+    padding-bottom:8px;
+  }
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;}
+  .field{display:flex;flex-direction:column;gap:4px;}
+  .field label{font-size:.74rem;color:var(--texto-suave);font-weight:600;}
+  .field input[type=text],
+  .field input[type=number],
+  .field textarea{
+    border:1px solid var(--borda);
+    border-radius:4px;
+    padding:8px 9px;
+    font-size:.92rem;
+    font-family:var(--fonte-corpo);
+    background:#fffdf9;
+    color:var(--texto);
+  }
+  .field input:focus, .field textarea:focus{outline:2px solid var(--azul-claro);outline-offset:1px;}
+  .field.readonly input{background:var(--areia-escura);color:var(--texto-suave);}
+  .checkline{
+    display:flex;align-items:center;gap:8px;
+    padding:8px 10px;border:1px solid var(--borda);border-radius:4px;background:#fffdf9;
+    font-size:.86rem;cursor:pointer;
+  }
+  .checkline input{width:17px;height:17px;accent-color:var(--azul-claro);cursor:pointer;}
+  .checks-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:8px;}
+
+  table.tasktable{width:100%;border-collapse:collapse;font-size:.82rem;}
+  table.tasktable th{
+    text-align:left;background:var(--azul-escuro);color:#fff;
+    padding:7px 8px;font-size:.68rem;text-transform:uppercase;letter-spacing:.4px;
+    position:sticky;top:0;
+  }
+  table.tasktable td{padding:6px 8px;border-bottom:1px solid var(--areia-escura);vertical-align:middle;}
+  table.tasktable tr:hover td{background:#fbf7ef;}
+  table.tasktable input[type=number]{width:72px;padding:5px 6px;border:1px solid var(--borda);border-radius:4px;text-align:right;font-size:.85rem;}
+  .task-group-title{
+    background:var(--areia-escura);font-weight:700;color:var(--azul-escuro);
+    padding:8px 10px;font-size:.75rem;text-transform:uppercase;letter-spacing:.5px;margin-top:14px;border-radius:4px;
+  }
+  .tablewrap{overflow-x:auto;border:1px solid var(--borda);border-radius:6px;}
+  .tag{display:inline-block;font-size:.65rem;padding:2px 6px;border-radius:3px;font-weight:700;letter-spacing:.3px;}
+  .tag.pct{background:#e4eef1;color:var(--azul-claro);}
+  .tag.fix{background:#f3e6de;color:var(--ferrugem);}
+
+  .totals-strip{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-top:14px;}
+  .total-box{background:var(--azul-escuro);color:#fff;border-radius:6px;padding:12px 14px;}
+  .total-box .label{font-size:.66rem;text-transform:uppercase;letter-spacing:.5px;color:#a9c8cf;}
+  .total-box .value{font-family:var(--fonte-dado);font-size:1.15rem;font-weight:700;margin-top:3px;}
+  .total-box.accent{background:var(--ferrugem);}
+  .total-box .value.sm{font-size:.95rem;}
+
+  .extras-row{display:grid;grid-template-columns:2.5fr 1fr 1fr 1.2fr auto;gap:8px;align-items:center;margin-bottom:6px;}
+  .extras-row input{width:100%;}
+  .extras-header{display:grid;grid-template-columns:2.5fr 1fr 1fr 1.2fr auto;gap:8px;font-size:.68rem;text-transform:uppercase;letter-spacing:.5px;color:var(--texto-suave);padding:0 0 6px;border-bottom:2px solid var(--azul-escuro);margin-bottom:8px;font-weight:700;}
+  .extras-total{display:flex;justify-content:flex-end;align-items:center;gap:10px;margin-top:10px;padding-top:10px;border-top:1px solid var(--borda);font-size:.85rem;font-weight:700;color:var(--azul-escuro);}
+  .btn{
+    border:none;border-radius:5px;padding:9px 16px;font-size:.85rem;font-weight:700;
+    cursor:pointer;letter-spacing:.2px;transition:transform .08s, filter .12s;
+  }
+  .btn:active{transform:scale(.97);}
+  .btn.primary{background:var(--ferrugem);color:#fff;}
+  .btn.primary:hover{filter:brightness(1.08);}
+  .btn.ghost{background:transparent;color:var(--azul);border:1px solid var(--azul-claro);}
+  .btn.ghost:hover{background:#eef5f6;}
+  .btn.danger{background:transparent;color:var(--erro);border:1px solid var(--erro);}
+  .btn.danger:hover{background:#fbeceb;}
+  .btn.small{padding:5px 10px;font-size:.72rem;}
+  .btn.icon{padding:6px 9px;}
+
+  .costline{display:grid;grid-template-columns:2.4fr 0.8fr 1.1fr 1.1fr;gap:8px;align-items:center;padding:8px 10px;border-bottom:1px solid var(--areia-escura);font-size:.82rem;}
+  .costline .lbl{font-weight:600;}
+  .costline input[type=number]{width:100%;padding:6px 7px;border:1px solid var(--borda);border-radius:4px;text-align:right;font-family:var(--fonte-dado);font-size:.82rem;}
+  .costline .sub{font-size:.68rem;color:var(--texto-suave);display:block;}
+  .costline .out{font-family:var(--fonte-dado);text-align:right;font-weight:700;color:var(--azul-escuro);}
+  .costline .col-label{font-size:.65rem;text-transform:uppercase;color:var(--texto-suave);letter-spacing:.4px;text-align:right;}
+  .costline .col-label:first-child{text-align:left;}
+  .costline.head{font-size:.65rem;text-transform:uppercase;color:var(--texto-suave);border-bottom:2px solid var(--azul-escuro);letter-spacing:.4px;font-weight:700;padding:6px 10px;}
+
+  .proposta-doc{background:#fff;border:1px solid var(--borda);border-radius:8px;padding:26px;font-size:.9rem;}
+  .proposta-doc h1{font-family:var(--fonte-titulo);color:var(--azul-escuro);font-size:1.4rem;margin:0 0 2px;}
+  .proposta-doc .subhead{color:var(--texto-suave);font-size:.78rem;margin-bottom:18px;}
+  .proposta-grid{display:grid;grid-template-columns:1fr 1fr;gap:4px 24px;font-size:.85rem;margin-bottom:16px;}
+  .proposta-grid div span.k{color:var(--texto-suave);}
+  .proposta-doc table{width:100%;border-collapse:collapse;margin:10px 0 18px;font-size:.85rem;}
+  .proposta-doc table th{text-align:left;background:var(--areia-escura);padding:6px 8px;font-size:.72rem;text-transform:uppercase;}
+  .proposta-doc table td{padding:6px 8px;border-bottom:1px solid var(--areia-escura);}
+  .proposta-total{background:var(--azul-escuro);color:#fff;border-radius:6px;padding:16px 18px;display:flex;justify-content:space-between;align-items:center;margin-top:10px;}
+  .proposta-total .big{font-family:var(--fonte-dado);font-size:1.6rem;font-weight:700;}
+
+  .hist-item{
+    display:flex;justify-content:space-between;align-items:center;gap:10px;
+    padding:12px 14px;border:1px solid var(--borda);border-radius:6px;background:#fff;margin-bottom:10px;flex-wrap:wrap;
+  }
+  .hist-item .info b{display:block;font-size:.95rem;color:var(--azul-escuro);}
+  .hist-item .info span{font-size:.76rem;color:var(--texto-suave);}
+  .hist-item .actions{display:flex;gap:8px;}
+  .empty-state{text-align:center;color:var(--texto-suave);padding:40px 10px;font-size:.9rem;}
+
+  .toast{
+    position:fixed;bottom:18px;left:50%;transform:translateX(-50%) translateY(20px);
+    background:var(--azul-escuro);color:#fff;padding:10px 18px;border-radius:20px;font-size:.82rem;
+    opacity:0;transition:opacity .25s, transform .25s;pointer-events:none;z-index:200;box-shadow:0 4px 16px rgba(0,0,0,.3);
+  }
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+
+  .note{font-size:.76rem;color:var(--texto-suave);background:#f3f1ea;border-left:3px solid var(--azul-claro);padding:8px 10px;border-radius:0 4px 4px 0;margin:10px 0;}
+
+  @media print{
+    header.app-header, nav.tabs, .no-print{display:none !important;}
+    body{background:#fff;}
+    section.pane{display:none !important;}
+    section.pane#pane-proposta{display:block !important;}
+    main{padding:0;max-width:none;}
+    .proposta-doc{border:none;padding:0;}
+  }
+  @media (max-width:600px){
+    .grid{grid-template-columns:1fr 1fr;}
+    .proposta-grid{grid-template-columns:1fr;}
+    .costline{grid-template-columns:1.8fr 0.7fr 1fr 1fr;font-size:.74rem;}
+  }
+</style>
+</head>
+<body>
+
+<header class="app-header">
+  <div class="brand-row">
+    <span class="brand-mark">MCPO Orçamentos</span>
+    <span class="brand-sub">Montagem de Pivôs de Irrigação</span>
+    <div style="margin-left:auto;">
+      <button id="btn-ms-login" class="btn" style="background:rgba(255,255,255,.15);color:#fff;border:1px solid rgba(255,255,255,.3);font-size:.75rem;padding:6px 12px;" type="button">
+        <span id="ms-login-label">🔑 Entrar com Microsoft</span>
+      </button>
+      <div id="ms-user-info" style="display:none;font-size:.72rem;color:#a9c8cf;margin-top:3px;text-align:right;"></div>
+    </div>
+  </div>
+  <nav class="tabs" id="tabs">
+    <button data-tab="obra" class="active">Dados da Obra</button>
+    <button data-tab="tarefas">Tarefas de Montagem</button>
+    <button data-tab="custos">Custos Gerais</button>
+    <button data-tab="proposta">Resumo &amp; Proposta</button>
+    <button data-tab="historico">Histórico</button>
+  </nav>
+</header>
+
+<main>
+
+  <!-- ================= ABA: DADOS DA OBRA ================= -->
+  <section class="pane active" id="pane-obra">
+    <h2 class="pane-title">Dados da Obra</h2>
+    <p class="pane-desc">Identificação do cliente e do projeto. Esses dados aparecem na proposta comercial final.</p>
+
+    <div class="card">
+      <h3>Cliente &amp; Projeto</h3>
+      <div class="grid">
+        <div class="field"><label>Empresa</label><input type="text" id="i-empresa"></div>
+        <div class="field"><label>Cliente</label><input type="text" id="i-cliente"></div>
+        <div class="field"><label>Obra / Projeto</label><input type="text" id="i-obra"></div>
+        <div class="field"><label>Endereço da Obra</label><input type="text" id="i-endereco"></div>
+        <div class="field"><label>Vendedor</label><input type="text" id="i-vendedor"></div>
+        <div class="field"><label>Responsável Técnico</label><input type="text" id="i-responsavel"></div>
+        <div class="field"><label>Área / Hectares</label><input type="text" id="i-hectares" placeholder='ex: 16 pivôs - 480 ha'></div>
+        <div class="field"><label>Número de Pivôs</label><input type="number" id="i-numpivos" min="0"></div>
+      </div>
+    </div>
+    <div class="note">O número de pivôs é usado para sugerir a quantidade de "Base Pivô" nos Custos Gerais e como referência para preencher as tarefas marcadas "(POR PIVÔ)" na próxima aba.</div>
+  </section>
+
+  <!-- ================= ABA: TAREFAS ================= -->
+  <section class="pane" id="pane-tarefas">
+    <h2 class="pane-title">Tarefas de Montagem</h2>
+    <p class="pane-desc">Preencha a quantidade de cada serviço realizado na obra. <span class="tag pct">HORA TÉCNICA</span> paga por hora técnica × valor hora × percentual. <span class="tag fix">PREÇO POR METRO</span> paga um valor fixo por metro instalado.</p>
+
+    <div class="card">
+      <h3>Parâmetros de Encargos</h3>
+      <div class="grid" style="max-width:560px;">
+        <div class="field">
+          <label>Valor Hora Técnica — encargos (R$)</label>
+          <input type="number" id="i-vhora-encargo" step="0.01" min="0">
+        </div>
+        <div class="field">
+          <label>% Montador sobre Hora Técnica</label>
+          <input type="number" id="i-pctmontador" step="0.01" min="0" max="100">
+        </div>
+        <div class="field">
+          <label>% Auxiliar sobre Hora Técnica</label>
+          <input type="number" id="i-pctauxiliar" step="0.01" min="0" max="100">
+        </div>
+        <div class="field readonly">
+          <label>Encargo por hora (Montador + Auxiliar)</label>
+          <input type="text" id="o-encargo-hora" disabled>
+        </div>
+      </div>
+      <div class="note" style="margin-top:8px;">O <strong>Valor Hora Técnica</strong> aqui é a base de cálculo dos encargos de mão de obra (pagamento de montador e auxiliar). O valor de hora técnica em <em>Custos Gerais</em> é o custo cobrado à obra por hora trabalhada — são campos independentes.</div>
+    </div>
+
+    <div class="card">
+      <h3>Valor por Metro — Tubulação (R$/metro)</h3>
+      <div class="grid" style="max-width:560px;">
+        <div class="field">
+          <label>DN 0–350mm (MONT-002)</label>
+          <input type="number" id="i-tubdn350" step="0.01" min="0">
+        </div>
+        <div class="field">
+          <label>DN 355–450mm (MONT-003)</label>
+          <input type="number" id="i-tubdn450" step="0.01" min="0">
+        </div>
+        <div class="field">
+          <label>DN 450–600mm (MONT-004)</label>
+          <input type="number" id="i-tubdn600" step="0.01" min="0">
+        </div>
+      </div>
+      <div class="note" style="margin-top:8px;">Valor pago por metro instalado — aplicado igualmente a montador e auxiliar para cada faixa de diâmetro.</div>
+    </div>
+
+    <div id="task-groups"></div>
+
+    <div class="totals-strip">
+      <div class="total-box"><div class="label">TMO Total (horas)</div><div class="value" id="out-tmo">0</div></div>
+      <div class="total-box"><div class="label">Pagamento Montador</div><div class="value sm" id="out-labormont">R$ 0</div></div>
+      <div class="total-box"><div class="label">Pagamento Auxiliar</div><div class="value sm" id="out-laboraux">R$ 0</div></div>
+      <div class="total-box accent"><div class="label">Encargos Time (total mão de obra)</div><div class="value sm" id="out-encargos">R$ 0</div></div>
+    </div>
+  </section>
+
+  <!-- ================= ABA: CUSTOS GERAIS ================= -->
+  <section class="pane" id="pane-custos">
+    <h2 class="pane-title">Custos Gerais da Obra</h2>
+    <p class="pane-desc">Equipe, logística, maquinário e serviços contratados para essa obra.</p>
+
+    <div class="card">
+      <h3>Equipe</h3>
+      <div class="grid">
+        <div class="field"><label>Qtd. de Equipes</label><input type="number" id="i-qtdequipes" min="1" step="1"></div>
+        <div class="field readonly"><label>Qtd. de Pessoas (calculado)</label><input type="text" id="o-qtdpessoas" disabled></div>
+        <div class="field"><label>KM Diário (por equipe)</label><input type="number" id="i-kmdiario"></div>
+        <div class="field"><label>KM Adicional de Origem</label><input type="number" id="i-kmorigem"></div>
+        <div class="field"><label>Dist. KM da Loja (frete)</label><input type="number" id="i-kmloja"></div>
+        <div class="field"><label>Horas Adicionais (ADC HR)</label><input type="number" id="i-adchr"></div>
+        <div class="field readonly"><label>TMO de Obra (horas, da aba Tarefas)</label><input type="text" id="o-tmoobra" disabled></div>
+        <div class="field readonly"><label>Dias Corridos (estimado)</label><input type="text" id="o-diascorridos" disabled></div>
+        <div class="field">
+          <label>Prazo Estimado (dias) — deixe em branco para calcular</label>
+          <input type="number" id="i-prazomanual" placeholder="auto">
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Serviços &amp; Maquinário Contratados</h3>
+      <div class="checks-grid" id="servicos-checks"></div>
+      <div class="grid" style="margin-top:12px;">
+        <div class="field"><label>Dias de Uso — Trator</label><input type="number" id="i-diastrator"></div>
+        <div class="field"><label>Dias de Uso — Caminhão</label><input type="number" id="i-diascaminhao"></div>
+        <div class="field"><label>Dias de Uso — Munck</label><input type="number" id="i-diasmunck"></div>
+        <div class="field"><label>Tamanho Casa de Bomba (m²)</label><input type="number" id="i-casam2"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Detalhamento de Custos — Pivôs</h3>
+      <div class="tablewrap">
+        <div class="costline head"><div>Item</div><div style="text-align:right">Qtd/Dias</div><div style="text-align:right">Valor Unit. (R$)</div><div style="text-align:right">Total (R$)</div></div>
+        <div class="costline"><div class="lbl">Hospedagem <span class="sub">dias × pessoas</span></div><div id="pv-hosp-qtd" class="out"></div><div><input type="number" id="i-vhosp"></div><div class="out" id="pv-hosp-total"></div></div>
+        <div class="costline"><div class="lbl">KM Translado <span class="sub">carros/dia/obra</span></div><div id="pv-km-qtd" class="out"></div><div><input type="number" id="i-vkm"></div><div class="out" id="pv-km-total"></div></div>
+        <div class="costline"><div class="lbl">Alimentação <span class="sub">almoço/jantar</span></div><div id="pv-alim-qtd" class="out"></div><div><input type="number" id="i-valim"></div><div class="out" id="pv-alim-total"></div></div>
+        <div class="costline"><div class="lbl">Trator MCPO</div><div id="pv-trator-qtd" class="out"></div><div><input type="number" id="i-vtrator"></div><div class="out" id="pv-trator-total"></div></div>
+        <div class="costline"><div class="lbl">Hora Técnica</div><div id="pv-hora-qtd" class="out"></div><div><input type="number" id="i-vhora"></div><div class="out" id="pv-hora-total"></div></div>
+        <div class="costline"><div class="lbl">Caminhão MCPO</div><div id="pv-caminhao-qtd" class="out"></div><div><input type="number" id="i-vcaminhao"></div><div class="out" id="pv-caminhao-total"></div></div>
+        <div class="costline"><div class="lbl">Frete Máquinas MCPO</div><div id="pv-frete-qtd" class="out"></div><div><input type="number" id="i-vfrete"></div><div class="out" id="pv-frete-total"></div></div>
+        <div class="costline"><div class="lbl">Máquina PEAD <span class="sub">soldas/10 por dia</span></div><div id="pv-pead-qtd" class="out"></div><div><input type="number" id="i-vpead"></div><div class="out" id="pv-pead-total"></div></div>
+        <div class="costline"><div class="lbl">Caminhão Munck</div><div id="pv-munck-qtd" class="out"></div><div><input type="number" id="i-vmunck"></div><div class="out" id="pv-munck-total"></div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Detalhamento de Custos — Adutora &amp; Infraestrutura</h3>
+      <div class="tablewrap">
+        <div class="costline head"><div>Item</div><div style="text-align:right">Qtd</div><div style="text-align:right">Valor Unit. (R$)</div><div style="text-align:right">Total (R$)</div></div>
+        <div class="costline"><div class="lbl">Frete Escavadeira</div><div id="pv-fesc-qtd" class="out"></div><div><input type="number" id="i-vfesc"></div><div class="out" id="pv-fesc-total"></div></div>
+        <div class="costline"><div class="lbl">Escavadeira p/ Adutora <span class="sub">metros de tubulação</span></div><div id="pv-esc-qtd" class="out"></div><div><input type="number" id="i-vesc"></div><div class="out" id="pv-esc-total"></div></div>
+        <div class="costline"><div class="lbl">Base Pivô</div><div id="pv-base-qtd" class="out"></div><div><input type="number" id="i-vbase"></div><div class="out" id="pv-base-total"></div></div>
+        <div class="costline"><div class="lbl">Casa de Bomba Padrão</div><div id="pv-casa-qtd" class="out"></div><div><input type="number" id="i-vcasa"></div><div class="out" id="pv-casa-total"></div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Contratos Extras &amp; Adicionais</h3>
+      <div class="extras-header">
+        <span>Tipo</span>
+        <span>Unidade</span>
+        <span>Quantidade</span>
+        <span>Valor Total (R$)</span>
+        <span></span>
+      </div>
+      <div id="extras-list"></div>
+      <button class="btn ghost small" id="btn-add-extra" type="button">+ adicionar item</button>
+      <div class="extras-total">
+        <span>Subtotal Extras:</span>
+        <span id="out-subtotal-extras">R$ 0</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Encargos de Time (mão de obra)</h3>
+      <p class="pane-desc" style="margin-bottom:6px;">Vem automaticamente do total pago a montadores e auxiliares na aba Tarefas de Montagem.</p>
+      <div class="totals-strip">
+        <div class="total-box"><div class="label">Encargos Time</div><div class="value sm" id="pv-encargos"></div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Margem de Lucro</h3>
+      <div class="grid">
+        <div class="field"><label>Margem de Lucro Desejada (%)</label><input type="number" id="i-margem" step="0.1"></div>
+      </div>
+    </div>
+
+    <div class="totals-strip">
+      <div class="total-box accent"><div class="label">Custo Total da Obra</div><div class="value" id="out-custototal">R$ 0</div></div>
+    </div>
+  </section>
+
+  <!-- ================= ABA: PROPOSTA ================= -->
+  <section class="pane" id="pane-proposta">
+    <h2 class="pane-title no-print">Resumo &amp; Proposta Comercial</h2>
+    <p class="pane-desc no-print">Defina a margem e o imposto para chegar ao valor da proposta. Use "Imprimir / Salvar PDF" para gerar o documento.</p>
+
+    <div class="card no-print">
+      <h3>Precificação</h3>
+
+      <div style="overflow-x:auto;">
+        <table style="width:100%;border-collapse:collapse;font-size:.85rem;">
+          <thead>
+            <tr style="border-bottom:2px solid var(--azul-escuro);">
+              <th style="text-align:left;padding:7px 10px;font-size:.68rem;text-transform:uppercase;letter-spacing:.4px;color:var(--texto-suave);font-weight:700;">Campo</th>
+              <th style="text-align:right;padding:7px 10px;font-size:.68rem;text-transform:uppercase;letter-spacing:.4px;color:var(--texto-suave);font-weight:700;width:200px;">Valor</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr style="border-bottom:1px solid var(--areia-escura);">
+              <td style="padding:8px 10px;font-weight:600;">Custo Total da Obra</td>
+              <td style="padding:8px 10px;text-align:right;font-family:var(--fonte-dado);font-weight:700;color:var(--azul-escuro);" id="prec-custototal">R$ 0</td>
+            </tr>
+            <tr style="border-bottom:1px solid var(--areia-escura);">
+              <td style="padding:8px 10px;font-weight:600;">Imposto (%)</td>
+              <td style="padding:8px 10px;text-align:right;"><input type="number" id="i-imposto" step="0.01" style="width:120px;padding:6px 8px;border:1px solid var(--borda);border-radius:4px;text-align:right;font-family:var(--fonte-dado);font-size:.85rem;background:#fffdf9;"></td>
+            </tr>
+            <tr style="border-bottom:1px solid var(--areia-escura);">
+              <td style="padding:8px 10px;font-weight:600;">Desconto ao Cliente (%)</td>
+              <td style="padding:8px 10px;text-align:right;"><input type="number" id="i-desconto" step="0.1" style="width:120px;padding:6px 8px;border:1px solid var(--borda);border-radius:4px;text-align:right;font-family:var(--fonte-dado);font-size:.85rem;background:#fffdf9;"></td>
+            </tr>
+            <tr style="border-bottom:1px solid var(--areia-escura);background:var(--areia);">
+              <td style="padding:8px 10px;font-weight:600;color:var(--texto-suave);">Valor Sugerido <span style="font-size:.72rem;font-weight:400;">(com desconto)</span></td>
+              <td style="padding:8px 10px;text-align:right;font-family:var(--fonte-dado);font-weight:700;color:var(--azul-claro);" id="o-valorsugerido">R$ 0</td>
+            </tr>
+            <tr style="border-bottom:1px solid var(--areia-escura);">
+              <td style="padding:8px 10px;font-weight:600;">Valor Final da Proposta <span style="font-size:.72rem;font-weight:400;">(editável)</span></td>
+              <td style="padding:8px 10px;text-align:right;"><input type="number" id="i-valorfinal" step="0.01" style="width:160px;padding:6px 8px;border:1px solid var(--borda);border-radius:4px;text-align:right;font-family:var(--fonte-dado);font-size:.85rem;background:#fffdf9;"></td>
+            </tr>
+            <tr style="border-bottom:1px solid var(--areia-escura);background:var(--areia);">
+              <td style="padding:8px 10px;color:var(--texto-suave);">Imposto sobre Proposta</td>
+              <td style="padding:8px 10px;text-align:right;font-family:var(--fonte-dado);color:var(--texto-suave);" id="out-impostovalor">R$ 0</td>
+            </tr>
+            <tr style="border-bottom:1px solid var(--areia-escura);background:var(--areia);">
+              <td style="padding:8px 10px;color:var(--texto-suave);">Lucro Líquido Estimado</td>
+              <td style="padding:8px 10px;text-align:right;font-family:var(--fonte-dado);color:var(--verde);font-weight:700;" id="out-lucro">R$ 0</td>
+            </tr>
+            <tr style="background:var(--azul-escuro);">
+              <td style="padding:10px 10px;font-weight:700;color:#fff;">Margem Líquida Real</td>
+              <td style="padding:10px 10px;text-align:right;font-family:var(--fonte-dado);font-size:1.2rem;font-weight:700;color:#fff;" id="out-margemreal">0%</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card no-print">
+      <h3>Observações</h3>
+      <div class="field">
+        <label>Observações/particularidades do projeto (aparece na proposta)</label>
+        <textarea id="i-observacoes" rows="4" placeholder="Ex: acordos, responsabilidades do cliente, condições especiais..."></textarea>
+      </div>
+    </div>
+
+    <div class="card no-print" style="display:flex;gap:10px;flex-wrap:wrap;">
+      <button class="btn primary" id="btn-print" type="button">Imprimir / Salvar PDF</button>
+      <button class="btn ghost" id="btn-save-hist" type="button">Salvar no Histórico</button>
+    </div>
+
+    <div class="proposta-doc" id="proposta-doc"></div>
+  </section>
+
+  <!-- ================= ABA: HISTÓRICO ================= -->
+  <section class="pane" id="pane-historico">
+    <h2 class="pane-title">Histórico de Obras</h2>
+    <p class="pane-desc">Orçamentos salvos pela equipe. Visível para todas as pessoas que usam esse app.</p>
+
+    <div class="card" style="padding:12px 14px;">
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+        <input type="text" id="hist-busca" placeholder="Buscar por cliente ou obra..." style="flex:1;min-width:180px;border:1px solid var(--borda);border-radius:4px;padding:8px 10px;font-size:.88rem;background:#fffdf9;">
+        <button class="btn primary" id="btn-exportar-excel" type="button">&#8595; Exportar Excel (obra atual)</button>
+        <button class="btn ghost" id="btn-exportar-hist-excel" type="button">&#8595; Exportar Histórico Completo</button>
+        <label class="btn ghost" style="cursor:pointer;margin:0;" title="Importar Excel exportado pelo sistema">
+          &#8593; Importar Excel
+          <input type="file" id="inp-importar-excel" accept=".xlsx,.xls" style="display:none;">
+        </label>
+      </div>
+    </div>
+
+    <div id="hist-list"></div>
+  </section>
+
+</main>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ============================================================
+   CATÁLOGO DE TAREFAS — baseado na aba "PROJETO" da planilha
+   tipo 'pct'  -> paga por hora técnica: horas*qtd*260*12% (mont) / *3% (aux)
+   tipo 'fix'  -> paga valor fixo por unidade (metro): qtd*valorUnit (mont e aux)
+   ============================================================ */
+const TASKS = [
+  {id:'ELET-018', grupo:'AD', desc:'Adicional. Ligação elétrica (fora do projeto)', horas:1, tipo:'pct'},
+  {id:'ELET-021', grupo:'ADUTORA', desc:'Montagem ligação elétrica de válvula ON/OFF', horas:4, tipo:'pct'},
+  {id:'MONT-002', grupo:'ADUTORA (TUBULAÇÃO)', desc:'Montagem tubulação até DN350mm (0 a 350mm)', horas:1, tipo:'fix', unidade:'metros'},
+  {id:'MONT-003', grupo:'ADUTORA (TUBULAÇÃO)', desc:'Montagem tubulação até DN450mm (355 a 450mm)', horas:1.5, tipo:'fix', unidade:'metros'},
+  {id:'MONT-004', grupo:'ADUTORA (TUBULAÇÃO)', desc:'Montagem tubulação até DN600mm (450 a 600mm)', horas:2, tipo:'fix', unidade:'metros'},
+  {id:'ELET-004', grupo:'BARREIRA', desc:'Montagem autoreversão parada x barreira (por pivô)', horas:6, tipo:'pct'},
+  {id:'ELET-010', grupo:'CENTRAL', desc:'Montagem central de comunicação', horas:1.5, tipo:'pct'},
+  {id:'ELET-011', grupo:'CENTRAL', desc:'Montagem repetidora com energia 120/220V', horas:1.5, tipo:'pct'},
+  {id:'ELET-012', grupo:'CENTRAL', desc:'Montagem repetidora com placa solar', horas:1.5, tipo:'pct'},
+  {id:'ELET-022', grupo:'CENTRAL', desc:'Montagem ligação SPOTI', horas:1, tipo:'pct'},
+  {id:'ELET-023', grupo:'CENTRAL', desc:'Montagem ligação IRRIPUMP', horas:2, tipo:'pct'},
+  {id:'ELET-003', grupo:'CONJUNTO DE BOMBEAMENTO', desc:'Ligação elét. motor e quadro (por motobomba)', horas:6, tipo:'pct'},
+  {id:'ELET-025', grupo:'CONJUNTO DE BOMBEAMENTO', desc:'Ligação SAFE BOMB (antifurto)', horas:5, tipo:'pct'},
+  {id:'MONT-005', grupo:'CONJUNTO DE BOMBEAMENTO', desc:'Conj. de bombeamento com flutuante (fibra pronta)', horas:1.5, tipo:'pct'},
+  {id:'MONT-008', grupo:'CONJUNTO DE BOMBEAMENTO', desc:'Conj. de motobombas na casa de bombeamento (por motobomba)', horas:14, tipo:'pct'},
+  {id:'MONT-006', grupo:'CONJUNTO DE BOMBEAMENTO', desc:'Conj. de bombeamento com balsa (metal, precisa montagem)', horas:8, tipo:'pct'},
+  {id:'ELET-002', grupo:'LANCES', desc:'Ligação elét. por torre de sustentação (caixinha elétrica)', horas:1, tipo:'pct'},
+  {id:'ELET-024', grupo:'LANCES', desc:'Ligação SAFE por pivô (antifurto)', horas:3, tipo:'pct'},
+  {id:'MONT-001', grupo:'LANCES', desc:'Montagem torre + balanço (estrutura física)', horas:6.25, tipo:'pct'},
+  {id:'ELET-020', grupo:'LANCES', desc:'Ligação elétrica de trafo booster (pivôs acima de 14 lances)', horas:3, tipo:'pct'},
+  {id:'MONT-010', grupo:'PEAD', desc:'Solda de PEAD (quantidade de soldas)', horas:1, tipo:'pct'},
+  {id:'ELET-000', grupo:'TORRE CENTRAL', desc:'Ligação painel e parametrização (por pivô)', horas:1, tipo:'pct'},
+  {id:'ELET-001', grupo:'TORRE CENTRAL', desc:'Ligação painel e anel coletor (por pivô)', horas:3, tipo:'pct'},
+  {id:'ELET-008', grupo:'TORRE CENTRAL', desc:'GPS GNSS RTK e IRRIMESH (por pivô)', horas:4, tipo:'pct'},
+  {id:'ELET-013', grupo:'TORRE CENTRAL', desc:'Sensor de chuva (por pivô)', horas:0.5, tipo:'pct'},
+];
+const TUBULACAO_IDS = ['MONT-002','MONT-003','MONT-004'];
+const SOLDA_PEAD_ID = 'MONT-010';
+
+const SERVICOS_DEFS = [
+  {key:'trator', label:'Trator'},
+  {key:'caminhao', label:'Caminhão'},
+  {key:'freteMcpo', label:'Frete MCPO'},
+  {key:'munck', label:'Munck'},
+  {key:'escavadeira', label:'Escavadeira'},
+  {key:'basePivo', label:'Base Pivô'},
+  {key:'casaPadrao', label:'Casa / Padrão'},
+  {key:'maquinaPead', label:'Máquina PEAD'},
+  {key:'alimAlmoco', label:'Alimentação Almoço'},
+  {key:'alimJantar', label:'Alimentação Jantar'},
+  {key:'hospedagem', label:'Hospedagem'},
+  {key:'auxiliares', label:'Auxiliares na Equipe'},
+];
+
+function defaultState(){
+  return {
+    info:{empresa:'MAQCAMPO IRRIGAÇÃO', cliente:'', obra:'', endereco:'', vendedor:'', responsavel:'', hectares:'', numPivos:0},
+    equipe:{qtdEquipes:1, kmDiario:40, kmOrigem:110, kmLoja:120, adcHr:0, diasTrator:120, diasCaminhao:200, diasMunck:240, casaM2:164, prazoManual:null},
+    servicos:{trator:false, caminhao:true, freteMcpo:true, munck:true, escavadeira:true, basePivo:true, casaPadrao:true, maquinaPead:true, alimAlmoco:false, alimJantar:false, hospedagem:false, auxiliares:true},
+    precos:{hospedagem:80, km:3.9, refeicao:80, trator:325, horaTecnica:260, caminhao:300, freteKm:8.5, maquinaPead:2500, munck:2500, freteEscavadeiraKm:13, metroEscavadeira:15, basePivo:18000, casaM2:2500, pctMontador:12, pctAuxiliar:3, tubDN350:1.45, tubDN450:1.70, tubDN600:1.80, horaEncargo:260},
+    tasks:{},
+    extras:[
+      {desc:'Geomembrana', unidade:'m²', qtd:0, valorTotal:0},
+      {desc:'Solda PEAD acima de 355mm', unidade:'un', qtd:0, valorTotal:0},
+      {desc:'Técnico de Segurança', unidade:'mensal', qtd:0, valorTotal:0},
+      {desc:'Insumos Adicionais', unidade:'un', qtd:0, valorTotal:0},
+    ],
+    financeiro:{desconto:0, imposto:22.15, margem:20, valorFinalManual:null},
+    observacoes:'',
+  };
+}
+
+let state = defaultState();
+
+/* ---------- helpers ---------- */
+function n(v){const x=Number(v); return isFinite(x)?x:0;}
+function brl(v){return (v||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});}
+function num2(v){return (v||0).toLocaleString('pt-BR',{maximumFractionDigits:2});}
+function ceilDiv(a,b){ if(b<=0) return 0; return Math.ceil(a/b); }
+function escapeHtml(s){ const d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
+function toast(msg){
+  const t=document.getElementById('toast');
+  t.textContent=msg; t.classList.add('show');
+  clearTimeout(toast._h);
+  toast._h=setTimeout(()=>t.classList.remove('show'),2200);
+}
+
+/* ---------- tabs ---------- */
+document.getElementById('tabs').addEventListener('click', e=>{
+  const btn=e.target.closest('button[data-tab]');
+  if(!btn) return;
+  document.querySelectorAll('nav.tabs button').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  document.querySelectorAll('section.pane').forEach(p=>p.classList.remove('active'));
+  document.getElementById('pane-'+btn.dataset.tab).classList.add('active');
+  if(btn.dataset.tab==='proposta') renderProposta();
+});
+
+/* ---------- render: task table ---------- */
+function renderTasks(){
+  const groups = {};
+  TASKS.forEach(t=>{ (groups[t.grupo] = groups[t.grupo]||[]).push(t); });
+  const wrap = document.getElementById('task-groups');
+  wrap.innerHTML='';
+  Object.keys(groups).forEach(g=>{
+    const title=document.createElement('div');
+    title.className='task-group-title';
+    title.textContent=g;
+    wrap.appendChild(title);
+
+    const tw=document.createElement('div'); tw.className='tablewrap';
+    const table=document.createElement('table'); table.className='tasktable';
+    table.innerHTML=`<thead><tr>
+      <th>Serviço</th><th>Tipo</th><th>Horas/un.</th><th>${groups[g][0].tipo==='fix'?'Metros':'Qtd.'}</th><th>Horas Total</th><th>Valor Mont.</th><th>Valor Aux.</th>
+    </tr></thead><tbody></tbody>`;
+    const tbody=table.querySelector('tbody');
+    groups[g].forEach(t=>{
+      const tr=document.createElement('tr');
+      tr.innerHTML=`
+        <td>${t.desc}<div style="font-size:.65rem;color:var(--texto-suave);">${t.id}</div></td>
+        <td>${t.tipo==='fix' ? '<span class="tag fix">R$/metro</span>' : '<span class="tag pct">hora técnica</span>'}</td>
+        <td>${t.horas}</td>
+        <td><input type="number" min="0" step="0.01" data-task="${t.id}" value="${state.tasks[t.id]||0}"></td>
+        <td class="out" id="th-${t.id}">0</td>
+        <td class="out" id="tm-${t.id}">R$ 0</td>
+        <td class="out" id="ta-${t.id}">R$ 0</td>`;
+      tbody.appendChild(tr);
+    });
+    tw.appendChild(table);
+    wrap.appendChild(tw);
+  });
+  wrap.querySelectorAll('input[data-task]').forEach(inp=>{
+    inp.addEventListener('input', ()=>{
+      state.tasks[inp.dataset.task]=n(inp.value);
+      recalc();
+    });
+  });
+}
+
+/* ---------- render: servicos checkboxes ---------- */
+function renderServicos(){
+  const wrap=document.getElementById('servicos-checks');
+  wrap.innerHTML='';
+  SERVICOS_DEFS.forEach(s=>{
+    const lbl=document.createElement('label');
+    lbl.className='checkline';
+    lbl.innerHTML=`<input type="checkbox" data-servico="${s.key}" ${state.servicos[s.key]?'checked':''}> ${s.label}`;
+    wrap.appendChild(lbl);
+  });
+  wrap.querySelectorAll('input[data-servico]').forEach(cb=>{
+    cb.addEventListener('change', ()=>{ state.servicos[cb.dataset.servico]=cb.checked; recalc(); });
+  });
+}
+
+/* ---------- render: extras list ---------- */
+function renderExtras(){
+  const wrap=document.getElementById('extras-list');
+  wrap.innerHTML='';
+  state.extras.forEach((ex,i)=>{
+    const row=document.createElement('div');
+    row.className='extras-row';
+    row.innerHTML=`
+      <input type="text" data-ex="desc" data-i="${i}" value="${ex.desc}" placeholder="Tipo / Descrição">
+      <input type="text" data-ex="unidade" data-i="${i}" value="${ex.unidade}" placeholder="Unidade">
+      <input type="number" data-ex="qtd" data-i="${i}" value="${ex.qtd}" placeholder="Qtd" min="0">
+      <input type="number" data-ex="valorTotal" data-i="${i}" value="${ex.valorTotal}" placeholder="0,00" min="0" step="0.01">
+      <button class="btn danger small" data-rm="${i}" type="button">remover</button>`;
+    wrap.appendChild(row);
+  });
+  wrap.querySelectorAll('input[data-ex]').forEach(inp=>{
+    inp.addEventListener('input', ()=>{
+      const i=Number(inp.dataset.i), field=inp.dataset.ex;
+      state.extras[i][field] = (field==='desc'||field==='unidade') ? inp.value : n(inp.value);
+      recalc();
+    });
+  });
+  wrap.querySelectorAll('button[data-rm]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      state.extras.splice(Number(btn.dataset.rm),1);
+      renderExtras(); recalc();
+    });
+  });
+}
+document.getElementById('btn-add-extra').addEventListener('click', ()=>{
+  state.extras.push({desc:'Novo item', unidade:'un', qtd:0, valorUnit:0});
+  renderExtras(); recalc();
+});
+
+/* ---------- bind simple inputs ---------- */
+const SIMPLE_BINDINGS = [
+  ['i-empresa','info','empresa','text'],
+  ['i-cliente','info','cliente','text'],
+  ['i-obra','info','obra','text'],
+  ['i-endereco','info','endereco','text'],
+  ['i-vendedor','info','vendedor','text'],
+  ['i-responsavel','info','responsavel','text'],
+  ['i-hectares','info','hectares','text'],
+  ['i-numpivos','info','numPivos','num'],
+
+  ['i-qtdequipes','equipe','qtdEquipes','num'],
+  ['i-kmdiario','equipe','kmDiario','num'],
+  ['i-kmorigem','equipe','kmOrigem','num'],
+  ['i-kmloja','equipe','kmLoja','num'],
+  ['i-adchr','equipe','adcHr','num'],
+  ['i-diastrator','equipe','diasTrator','num'],
+  ['i-diascaminhao','equipe','diasCaminhao','num'],
+  ['i-diasmunck','equipe','diasMunck','num'],
+  ['i-casam2','equipe','casaM2','num'],
+  ['i-prazomanual','equipe','prazoManual','numOrNull'],
+
+  ['i-vhosp','precos','hospedagem','num'],
+  ['i-vkm','precos','km','num'],
+  ['i-valim','precos','refeicao','num'],
+  ['i-vtrator','precos','trator','num'],
+  ['i-vhora','precos','horaTecnica','num'],
+  ['i-vcaminhao','precos','caminhao','num'],
+  ['i-vfrete','precos','freteKm','num'],
+  ['i-vpead','precos','maquinaPead','num'],
+  ['i-vmunck','precos','munck','num'],
+  ['i-vfesc','precos','freteEscavadeiraKm','num'],
+  ['i-vesc','precos','metroEscavadeira','num'],
+  ['i-vbase','precos','basePivo','num'],
+  ['i-vcasa','precos','casaM2','num'],
+  ['i-pctmontador','precos','pctMontador','num'],
+  ['i-pctauxiliar','precos','pctAuxiliar','num'],
+  ['i-vhora-encargo','precos','horaEncargo','num'],
+  ['i-tubdn350','precos','tubDN350','num'],
+  ['i-tubdn450','precos','tubDN450','num'],
+  ['i-tubdn600','precos','tubDN600','num'],
+
+  ['i-desconto','financeiro','desconto','num'],
+  ['i-imposto','financeiro','imposto','num'],
+  ['i-margem','financeiro','margem','num'],
+  ['i-valorfinal','financeiro','valorFinalManual','numOrNull'],
+  ['i-observacoes','_root','observacoes','text'],
+];
+
+function bindSimpleInputs(){
+  SIMPLE_BINDINGS.forEach(([id,group,key,type])=>{
+    const el=document.getElementById(id);
+    if(!el) return;
+    el.addEventListener('input', ()=>{
+      let v=el.value;
+      if(type==='num') v=n(v);
+      else if(type==='numOrNull') v = (v==='' ? null : n(v));
+      if(group==='_root') state[key]=v; else state[group][key]=v;
+      if(group==='_root') renderProposta(); else recalc();
+    });
+  });
+}
+
+function fillSimpleInputsFromState(){
+  SIMPLE_BINDINGS.forEach(([id,group,key])=>{
+    const el=document.getElementById(id);
+    if(!el) return;
+    const v = (group==='_root') ? state[key] : state[group][key];
+    el.value = (v===null || v===undefined) ? '' : v;
+  });
+}
+
+/* ============================================================
+   CÁLCULO PRINCIPAL — replica a lógica da planilha original
+   ============================================================ */
+function compute(){
+  const out = {};
+
+  // --- Tarefas ---
+  let tmoPct = 0, laborMont = 0, laborAux = 0;
+  let adutoraMetros = 0, qtySoldaPead = 0;
+  const perTask = {};
+  TASKS.forEach(t=>{
+    const qtd = n(state.tasks[t.id]);
+    let horasTotal, vMont, vAux;
+    if(t.tipo==='fix'){
+      // valorUnit vem do state para tubulações, fallback para t.valorUnit se houver
+      let vu = t.valorUnit;
+      if(t.id==='MONT-002') vu = n(state.precos.tubDN350);
+      else if(t.id==='MONT-003') vu = n(state.precos.tubDN450);
+      else if(t.id==='MONT-004') vu = n(state.precos.tubDN600);
+      horasTotal = t.horas*qtd;
+      vMont = qtd * vu;
+      vAux  = qtd * vu;
+      adutoraMetros += qtd;
+    } else {
+      horasTotal = t.horas*qtd;
+      vMont = t.horas*qtd*state.precos.horaEncargo*(n(state.precos.pctMontador)/100);
+      vAux  = t.horas*qtd*state.precos.horaEncargo*(n(state.precos.pctAuxiliar)/100);
+      tmoPct += horasTotal;
+    }
+    if(t.id===SOLDA_PEAD_ID) qtySoldaPead = qtd;
+    perTask[t.id] = {horasTotal, vMont, vAux};
+    laborMont += vMont;
+    laborAux  += vAux;
+  });
+  // regra especial de tubulação (equivalente à fórmula AA29 da planilha):
+  // produção de referência: 500m a cada 10h; mínimo de 8h se houver qualquer metragem abaixo de 499m
+  let adutoraHorasEspecial = 0;
+  if(adutoraMetros>0 && adutoraMetros<499) adutoraHorasEspecial = 8;
+  else if(adutoraMetros>=499) adutoraHorasEspecial = (adutoraMetros/500)*10;
+  const tmoTotal = tmoPct + adutoraHorasEspecial;
+  const encargosTime = laborMont + laborAux;
+
+  out.perTask=perTask; out.tmoTotal=tmoTotal; out.laborMont=laborMont; out.laborAux=laborAux;
+  out.encargosTime=encargosTime; out.adutoraMetros=adutoraMetros; out.qtySoldaPead=qtySoldaPead;
+
+  // --- Equipe / prazo ---
+  const qtdEquipes = Math.max(1, n(state.equipe.qtdEquipes));
+  const qtdPessoas = state.servicos.auxiliares ? qtdEquipes*5 : qtdEquipes*2;
+  const diasCorridos = (n(state.equipe.adcHr)+tmoTotal)/8 + (tmoTotal/8*0.3);
+  const prazoEstimado = (state.equipe.prazoManual!=null) ? n(state.equipe.prazoManual) : Math.max(1, ceilDiv(diasCorridos, qtdEquipes));
+  out.qtdPessoas=qtdPessoas; out.diasCorridos=diasCorridos; out.prazoEstimado=prazoEstimado;
+
+  // --- Custos: PIVÔS ---
+  const P = state.precos, S = state.servicos, E = state.equipe;
+  const hospQtd = prazoEstimado*qtdPessoas;
+  const hospTotal = S.hospedagem ? hospQtd*P.hospedagem : 0;
+
+  const kmQtd = (qtdEquipes*Math.max(E.kmDiario,25)*prazoEstimado) + (E.kmOrigem*qtdEquipes*ceilDiv(prazoEstimado,30))*2;
+  const kmTotal = kmQtd*P.km;
+
+  const almocoJantar = S.alimAlmoco && S.alimJantar;
+  const algumaRefeicao = S.alimAlmoco || S.alimJantar;
+  const alimQtd = prazoEstimado*qtdPessoas;
+  const alimTotal = almocoJantar ? alimQtd*P.refeicao : (algumaRefeicao ? (alimQtd*P.refeicao)/2 : 0);
+
+  const tratorTotal = S.trator ? E.diasTrator*P.trator : 0;
+  const horaQtd = n(E.adcHr)+tmoTotal;
+  const horaTotal = horaQtd*P.horaTecnica;
+  const caminhaoTotal = S.caminhao ? E.diasCaminhao*P.caminhao : 0;
+  const freteTotal = S.freteMcpo ? E.kmLoja*P.freteKm*2 : 0;
+  const peadDias = ceilDiv(qtySoldaPead,10);
+  const peadTotal = S.maquinaPead ? peadDias*P.maquinaPead : 0;
+  const munckTotal = S.munck ? (E.diasMunck<17 ? E.diasMunck*P.munck : ceilDiv(E.diasMunck,30)*40000) : 0;
+
+  const totalPivos = hospTotal+kmTotal+alimTotal+tratorTotal+horaTotal+caminhaoTotal+freteTotal+peadTotal+munckTotal;
+
+  // --- Custos: ADUTORA ---
+  const fEscTotal = S.escavadeira ? E.kmLoja*P.freteEscavadeiraKm*2 : 0;
+  const escTotal = S.escavadeira ? adutoraMetros*P.metroEscavadeira : 0;
+  const totalAdutora = fEscTotal+escTotal;
+
+  // --- Custos: INFRAESTRUTURA ---
+  const numPivos = n(state.info.numPivos);
+  const baseTotal = S.basePivo ? numPivos*P.basePivo : 0;
+  const casaTotal = S.casaPadrao ? E.casaM2*P.casaM2 : 0;
+  const totalInfra = baseTotal+casaTotal;
+
+  // --- Extras ---
+  const totalExtras = state.extras.reduce((s,ex)=>s+n(ex.valorTotal),0);
+
+  const somaBruta = totalPivos+totalAdutora+totalInfra+totalExtras+encargosTime;
+  const custoTotalObra = somaBruta;
+
+  Object.assign(out,{
+    hospQtd,hospTotal,kmQtd,kmTotal,alimQtd,alimTotal,tratorTotal,horaQtd,horaTotal,
+    caminhaoTotal,freteTotal,peadDias,peadTotal,munckTotal,totalPivos,
+    fEscTotal,escTotal,totalAdutora,baseTotal,casaTotal,totalInfra,totalExtras,
+    custoTotalObra
+  });
+
+  // --- Precificação ---
+  const impostoPct = n(state.financeiro.imposto)/100;
+  const margemPct = n(state.financeiro.margem)/100;
+  const descontoPct = n(state.financeiro.desconto)/100;
+  const denom = 1-margemPct-impostoPct;
+  const valorSemDesconto = denom>0 ? custoTotalObra/denom : custoTotalObra;
+  const valorSugerido = valorSemDesconto * (1 - descontoPct);
+  const valorFinal = (state.financeiro.valorFinalManual!=null) ? n(state.financeiro.valorFinalManual) : valorSugerido;
+  const impostoValor = valorFinal*impostoPct;
+  const lucro = valorFinal-custoTotalObra-impostoValor;
+  const margemReal = valorFinal>0 ? (lucro/valorFinal)*100 : 0;
+
+  Object.assign(out,{valorSugerido,valorFinal,impostoValor,lucro,margemReal});
+  return out;
+}
+
+let LAST = null;
+
+function recalc(){
+  LAST = compute();
+  const r = LAST;
+
+  // tarefas
+  TASKS.forEach(t=>{
+    const el1=document.getElementById('th-'+t.id), el2=document.getElementById('tm-'+t.id), el3=document.getElementById('ta-'+t.id);
+    if(!el1) return;
+    el1.textContent = num2(r.perTask[t.id].horasTotal);
+    el2.textContent = brl(r.perTask[t.id].vMont);
+    el3.textContent = brl(r.perTask[t.id].vAux);
+  });
+  setText('out-tmo', num2(r.tmoTotal));
+  setText('out-labormont', brl(r.laborMont));
+  setText('out-laboraux', brl(r.laborAux));
+  setText('out-encargos', brl(r.encargosTime));
+
+  // referências na aba tarefas
+  const encArgHora = state.precos.horaEncargo * (n(state.precos.pctMontador) + n(state.precos.pctAuxiliar)) / 100;
+  setVal('o-encargo-hora', brl(encArgHora) + ' / hora');
+
+  // custos gerais
+  setVal('o-qtdpessoas', r.qtdPessoas);
+  setVal('o-tmoobra', num2(r.tmoTotal)+' h');
+  setVal('o-diascorridos', num2(r.diasCorridos)+' dias');
+
+  setText('pv-hosp-qtd', num2(r.hospQtd)); setText('pv-hosp-total', brl(r.hospTotal));
+  setText('pv-km-qtd', num2(r.kmQtd)); setText('pv-km-total', brl(r.kmTotal));
+  setText('pv-alim-qtd', num2(r.alimQtd)); setText('pv-alim-total', brl(r.alimTotal));
+  setText('pv-trator-qtd', num2(state.equipe.diasTrator)); setText('pv-trator-total', brl(r.tratorTotal));
+  setText('pv-hora-qtd', num2(r.horaQtd)); setText('pv-hora-total', brl(r.horaTotal));
+  setText('pv-caminhao-qtd', num2(state.equipe.diasCaminhao)); setText('pv-caminhao-total', brl(r.caminhaoTotal));
+  setText('pv-frete-qtd', num2(state.equipe.kmLoja)); setText('pv-frete-total', brl(r.freteTotal));
+  setText('pv-pead-qtd', num2(r.peadDias)); setText('pv-pead-total', brl(r.peadTotal));
+  setText('pv-munck-qtd', num2(state.equipe.diasMunck)); setText('pv-munck-total', brl(r.munckTotal));
+
+  setText('pv-fesc-qtd', num2(state.equipe.kmLoja)); setText('pv-fesc-total', brl(r.fEscTotal));
+  setText('pv-esc-qtd', num2(r.adutoraMetros)); setText('pv-esc-total', brl(r.escTotal));
+  setText('pv-base-qtd', num2(state.info.numPivos)); setText('pv-base-total', brl(r.baseTotal));
+  setText('pv-casa-qtd', num2(state.equipe.casaM2)); setText('pv-casa-total', brl(r.casaTotal));
+
+  setText('pv-encargos', brl(r.encargosTime));
+  setText('out-custototal', brl(r.custoTotalObra));
+  setText('out-subtotal-extras', brl(r.totalExtras));
+
+  // proposta / precificação
+  setVal('o-valorsugerido', brl(r.valorSugerido));
+  setText('o-valorsugerido', brl(r.valorSugerido));
+  setText('prec-custototal', brl(r.custoTotalObra));
+  setText('out-impostovalor', brl(r.impostoValor));
+  setText('out-lucro', brl(r.lucro));
+  setText('out-margemreal', num2(r.margemReal)+'%');
+}
+function setText(id,txt){const el=document.getElementById(id); if(el) el.textContent=txt;}
+function setVal(id,val){const el=document.getElementById(id); if(el) el.value=val;}
+
+/* ---------- proposta comercial (documento) ---------- */
+function renderProposta(){
+  const r = LAST || compute();
+  const i = state.info;
+  const dataHoje = new Date().toLocaleDateString('pt-BR');
+
+  const lancesQtd = n(state.tasks['MONT-001']);
+  const motobombasQtd = n(state.tasks['ELET-003']);
+  const balsaQtd = n(state.tasks['MONT-006']) + n(state.tasks['MONT-005']);
+  const soldaQtd = n(state.tasks['MONT-010']);
+
+  const servicosList = SERVICOS_DEFS.map(s=>{
+    const contratadoMcpo = !!state.servicos[s.key];
+    return `<tr><td>${s.label}</td><td>${contratadoMcpo?'✔ MCPO':'—'}</td><td>${contratadoMcpo?'—':'✔ Cliente'}</td></tr>`;
+  }).join('');
+
+  document.getElementById('proposta-doc').innerHTML = `
+    <h1>Proposta Comercial — Montagem de Pivôs de Irrigação</h1>
+    <div class="subhead">${i.empresa || 'MAQCAMPO IRRIGAÇÃO'} · Data: ${dataHoje}</div>
+
+    <div class="proposta-grid">
+      <div><span class="k">Cliente:</span> ${i.cliente||'—'}</div>
+      <div><span class="k">Vendedor:</span> ${i.vendedor||'—'}</div>
+      <div><span class="k">Obra/Projeto:</span> ${i.obra||'—'}</div>
+      <div><span class="k">Responsável Técnico:</span> ${i.responsavel||'—'}</div>
+      <div><span class="k">Endereço da Obra:</span> ${i.endereco||'—'}</div>
+      <div><span class="k">Área:</span> ${i.hectares||'—'}</div>
+    </div>
+
+    <p>Apresentamos os serviços de montagem e execução de obra para o projeto de irrigação acima, garantindo eficiência, conformidade técnica e resultados de alto padrão, conforme detalhado abaixo.</p>
+
+    <table>
+      <tr><th>TMO de Obra</th><td>${num2(r.tmoTotal)} horas</td><th>Prazo Estimado</th><td>${num2(r.prazoEstimado)} dias</td></tr>
+      <tr><th>Qtd. Equipes</th><td>${state.equipe.qtdEquipes}</td><th>Qtd. Pivôs</th><td>${i.numPivos||0}</td></tr>
+      <tr><th>Qtd. Lances</th><td>${lancesQtd}</td><th>Qtd. Adutora</th><td>${num2(r.adutoraMetros)} metros</td></tr>
+      <tr><th>Qtd. Motobombas</th><td>${motobombasQtd}</td><th>Balsa/Flutuante</th><td>${balsaQtd} un</td></tr>
+      <tr><th>Solda PEAD</th><td>${soldaQtd} un</td><th></th><td></td></tr>
+    </table>
+
+    <h3 style="font-size:.85rem;text-transform:uppercase;color:var(--azul-claro);">Serviços &amp; Maquinário</h3>
+    <table><tr><th>Item</th><th>Responsável</th><th></th></tr>${servicosList}</table>
+
+    ${state.observacoes ? `
+    <h3 style="font-size:.85rem;text-transform:uppercase;color:var(--azul-claro);">Observações</h3>
+    <p style="white-space:pre-wrap;">${escapeHtml(state.observacoes)}</p>
+    ` : ''}
+
+    <div class="proposta-total">
+      <div>
+        <div style="font-size:.7rem;text-transform:uppercase;letter-spacing:.5px;color:#a9c8cf;">Valor Total da Proposta</div>
+        <div class="big">${brl(r.valorFinal)}</div>
+      </div>
+      <div style="text-align:right;font-size:.8rem;">
+        Desconto: ${num2(state.financeiro.desconto)}%<br>
+        Imposto: ${num2(state.financeiro.imposto)}%
+      </div>
+    </div>
+  `;
+}
+document.getElementById('btn-print').addEventListener('click', ()=>{ renderProposta(); window.print(); });
+
+/* ============================================================
+   MICROSOFT GRAPH — autenticação e OneDrive compartilhado
+   ============================================================ */
+// Detecta se está rodando no SharePoint/OneDrive e usa redirect.html no mesmo caminho
+function getRedirectUri(){
+  const loc = window.location;
+  // GitHub Pages — URL fixa
+  if(loc.hostname === 'mcpoirrigacao.github.io'){
+    return 'https://mcpoirrigacao.github.io/orc_mcpo/redirect.html';
+  }
+  // SharePoint/OneDrive
+  if(loc.hostname.includes('sharepoint.com') || loc.hostname.includes('onedrive.live.com')){
+    return loc.href.replace(/\/[^\/]*$/, '/redirect.html').split('?')[0].split('#')[0];
+  }
+  // local (desenvolvimento)
+  return loc.href.split('?')[0].split('#')[0];
+}
+
+const MSAL_CONFIG = {
+  auth: {
+    clientId: 'a02d9ccd-9650-4855-99ce-3ad5ec98c381',
+    authority: 'https://login.microsoftonline.com/aa796efe-0373-4718-9911-6cbf0bfa260f',
+    redirectUri: getRedirectUri(),
+    postLogoutRedirectUri: getRedirectUri(),
+  },
+  cache: { cacheLocation: 'localStorage', storeAuthStateInCookie: true },
+};
+const GRAPH_SCOPES = ['Files.ReadWrite', 'User.Read'];
+const ONEDRIVE_FOLDER = 'Historico_montagem';
+const HIST_FILENAME   = 'historico.json';
+const HIST_KEY        = 'mcpo-historico-obras'; // fallback localStorage
+
+let msalInstance = null;
+let msAccount    = null;
+
+async function initMsal(){
+  try{
+    msalInstance = new msal.PublicClientApplication(MSAL_CONFIG);
+    await msalInstance.initialize();
+    // No OneDrive/SharePoint não usamos redirect — apenas popup
+    // Verificar se já há conta em cache
+    const accounts = msalInstance.getAllAccounts();
+    if(accounts.length){ msAccount = accounts[0]; }
+    updateLoginUI();
+  }catch(e){
+    console.warn('MSAL init error:', e);
+    updateLoginUI();
+  }
+}
+
+function updateLoginUI(){
+  const btn  = document.getElementById('btn-ms-login');
+  const lbl  = document.getElementById('ms-login-label');
+  const info = document.getElementById('ms-user-info');
+  if(msAccount){
+    lbl.textContent  = '✓ ' + (msAccount.name || msAccount.username);
+    info.textContent = 'OneDrive: ' + ONEDRIVE_FOLDER + '/' + HIST_FILENAME;
+    info.style.display = 'block';
+    btn.style.background = 'rgba(76,122,63,.5)';
+  } else {
+    lbl.textContent  = '🔑 Entrar com Microsoft';
+    info.style.display = 'none';
+    btn.style.background = 'rgba(255,255,255,.15)';
+  }
+}
+
+document.getElementById('btn-ms-login').addEventListener('click', async ()=>{
+  if(!msalInstance){ toast('Aguarde — inicializando autenticação...'); return; }
+  if(msAccount){
+    if(confirm('Deslogar de ' + msAccount.username + '?')){
+      await msalInstance.logoutPopup({ account: msAccount });
+      msAccount = null;
+      updateLoginUI();
+    }
+    return;
+  }
+  try{
+    const resp = await msalInstance.loginPopup({ scopes: GRAPH_SCOPES });
+    msAccount = resp.account;
+    updateLoginUI();
+    toast('Logado como ' + msAccount.username);
+  }catch(e){
+    console.error('Login error:', e);
+    if(e.errorCode === 'popup_window_error'){
+      toast('Popup bloqueado — permita popups para este site e tente novamente.');
+    } else if(e.errorCode === 'redirect_uri_mismatch' || (e.message||'').includes('redirect')){
+      toast('URL não registrada no Azure. Adicione esta URL como Redirect URI no portal Azure.');
+      console.error('Redirect URI atual:', window.location.href.split('?')[0].split('#')[0]);
+    } else {
+      toast('Erro no login: ' + (e.errorCode || e.message || 'desconhecido'));
+    }
+  }
+});
+
+async function getGraphToken(){
+  if(!msalInstance || !msAccount) return null;
+  try{
+    const r = await msalInstance.acquireTokenSilent({ scopes: GRAPH_SCOPES, account: msAccount });
+    return r.accessToken;
+  }catch(e){
+    try{
+      const r = await msalInstance.acquireTokenPopup({ scopes: GRAPH_SCOPES });
+      return r.accessToken;
+    }catch(e2){ return null; }
+  }
+}
+
+async function graphGet(path){
+  const token = await getGraphToken();
+  if(!token) return null;
+  const r = await fetch('https://graph.microsoft.com/v1.0' + path, {
+    headers:{ Authorization: 'Bearer ' + token }
+  });
+  if(!r.ok) return null;
+  return r.json();
+}
+
+async function graphPut(path, body){
+  const token = await getGraphToken();
+  if(!token) return false;
+  const r = await fetch('https://graph.microsoft.com/v1.0' + path, {
+    method: 'PUT',
+    headers:{ Authorization: 'Bearer ' + token, 'Content-Type': 'application/octet-stream' },
+    body
+  });
+  return r.ok;
+}
+
+// Garante que a pasta existe no OneDrive do usuário logado
+async function ensureFolder(){
+  const token = await getGraphToken();
+  if(!token) return false;
+  // tenta criar — se já existe, a API retorna 409 (ignoramos)
+  await fetch('https://graph.microsoft.com/v1.0/me/drive/root/children', {
+    method: 'POST',
+    headers:{ Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: ONEDRIVE_FOLDER, folder:{}, '@microsoft.graph.conflictBehavior':'fail' })
+  });
+  return true;
+}
+
+/* ============================================================
+   HISTÓRICO — OneDrive se logado, localStorage como fallback
+   ============================================================ */
+const HIST_KEY_LOCAL = 'mcpo-historico-obras';
+
+async function loadHistorico(){
+  // --- OneDrive ---
+  if(msAccount){
+    try{
+      const token = await getGraphToken();
+      if(!token) return [];
+      const r = await fetch(
+        `https://graph.microsoft.com/v1.0/me/drive/root:/${ONEDRIVE_FOLDER}/${HIST_FILENAME}:/content`,
+        { headers:{ Authorization: 'Bearer ' + token } }
+      );
+      if(r.status === 404) return []; // arquivo ainda não existe
+      if(!r.ok) return [];
+      const text = await r.text();
+      return JSON.parse(text);
+    }catch(e){ console.warn('loadHistorico OneDrive error:', e); return []; }
+  }
+  // --- localStorage fallback ---
+  try{ const r = localStorage.getItem(HIST_KEY_LOCAL); return r ? JSON.parse(r) : []; }
+  catch(e){ return []; }
+}
+
+async function saveHistorico(list){
+  const json = JSON.stringify(list, null, 2);
+  // --- OneDrive ---
+  if(msAccount){
+    await ensureFolder();
+    const ok = await graphPut(
+      `/me/drive/root:/${ONEDRIVE_FOLDER}/${HIST_FILENAME}:/content`,
+      new TextEncoder().encode(json)
+    );
+    return ok;
+  }
+  // --- localStorage fallback ---
+  try{ localStorage.setItem(HIST_KEY_LOCAL, json); return true; }
+  catch(e){ return false; }
+}
+
+/* ============================================================
+   SALVAR EXCEL NO ONEDRIVE (além de baixar localmente)
+   ============================================================ */
+async function salvarExcelOneDrive(wbBytes, filename){
+  if(!msAccount) return; // sem login, só download local
+  await ensureFolder();
+  const ok = await graphPut(
+    `/me/drive/root:/${ONEDRIVE_FOLDER}/${filename}:/content`,
+    wbBytes
+  );
+  if(ok) toast('Excel salvo no OneDrive: ' + ONEDRIVE_FOLDER + '/' + filename);
+  else    toast('Excel baixado localmente (falha ao salvar no OneDrive).');
+}
+
+let _histCache = [];
+
+async function renderHistorico(filtro=''){
+  const wrap = document.getElementById('hist-list');
+  wrap.innerHTML = '<div class="empty-state">Carregando histórico...</div>';
+  _histCache = await loadHistorico();
+  const busca = filtro.toLowerCase().trim();
+  const lista = _histCache.slice().reverse().filter(item=>{
+    if(!busca) return true;
+    return (item.data.info.cliente||'').toLowerCase().includes(busca)
+        || (item.data.info.obra||'').toLowerCase().includes(busca)
+        || (item.data.info.vendedor||'').toLowerCase().includes(busca);
+  });
+
+  if(!_histCache.length){
+    wrap.innerHTML = '<div class="empty-state">Nenhuma obra salva ainda. Vá até "Resumo &amp; Proposta" e clique em "Salvar no Histórico".</div>';
+    return;
+  }
+  if(!lista.length){
+    wrap.innerHTML = '<div class="empty-state">Nenhuma obra encontrada para "'+filtro+'".</div>';
+    return;
+  }
+  wrap.innerHTML='';
+  lista.forEach(item=>{
+    const r_item = computeFromState(item.data);
+    const div=document.createElement('div');
+    div.className='hist-item';
+    div.innerHTML=`
+      <div class="info">
+        <b>${item.data.info.cliente || 'Cliente não informado'} — ${item.data.info.obra || 'Obra sem nome'}</b>
+        <span style="display:block;margin-top:2px;">
+          Salvo em ${new Date(item.savedAt).toLocaleString('pt-BR')}
+          &nbsp;·&nbsp; Vendedor: ${item.data.info.vendedor||'—'}
+          &nbsp;·&nbsp; Pivôs: ${item.data.info.numPivos||0}
+          &nbsp;·&nbsp; Prazo: ${r_item.prazoEstimado} dias
+        </span>
+        <span style="display:block;margin-top:4px;font-size:.82rem;">
+          Custo: <b>${brl(r_item.custoTotalObra)}</b>
+          &nbsp;&nbsp; Valor Proposta: <b style="color:var(--ferrugem)">${brl(r_item.valorFinal)}</b>
+          &nbsp;&nbsp; Margem Real: <b>${num2(r_item.margemReal)}%</b>
+        </span>
+      </div>
+      <div class="actions" style="flex-wrap:wrap;gap:6px;">
+        <button class="btn ghost small" data-open="${item.id}" type="button">Abrir</button>
+        <button class="btn ghost small" data-xls="${item.id}" type="button">Excel</button>
+        <button class="btn danger small" data-del="${item.id}" type="button">Excluir</button>
+      </div>`;
+    wrap.appendChild(div);
+  });
+
+  wrap.querySelectorAll('button[data-open]').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      const all = await loadHistorico();
+      const item = all.find(x=>x.id===btn.dataset.open);
+      if(item){
+        state = JSON.parse(JSON.stringify(item.data));
+        renderAll();
+        toast('Obra carregada');
+        document.querySelector('nav.tabs button[data-tab="obra"]').click();
+      }
+    });
+  });
+  wrap.querySelectorAll('button[data-xls]').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      const all = await loadHistorico();
+      const item = all.find(x=>x.id===btn.dataset.xls);
+      if(item){ exportarExcel(item.data, computeFromState(item.data)); toast('Gerando Excel...'); }
+    });
+  });
+  wrap.querySelectorAll('button[data-del]').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      if(!confirm('Excluir esta obra do histórico compartilhado?')) return;
+      let all = await loadHistorico();
+      all = all.filter(x=>x.id!==btn.dataset.del);
+      await saveHistorico(all);
+      renderHistorico(document.getElementById('hist-busca').value);
+      toast('Obra excluída');
+    });
+  });
+}
+
+document.getElementById('hist-busca').addEventListener('input', e=>{
+  renderHistorico(e.target.value);
+});
+
+document.getElementById('btn-save-hist').addEventListener('click', async ()=>{
+  const r = LAST || compute();
+  const list = await loadHistorico();
+  list.push({
+    id: 'obra-'+Date.now()+'-'+Math.random().toString(36).slice(2,7),
+    savedAt: Date.now(),
+    valorFinal: r.valorFinal,
+    data: JSON.parse(JSON.stringify(state)),
+  });
+  const ok = await saveHistorico(list);
+  toast(ok ? 'Obra salva no histórico!' : 'Não foi possível salvar agora.');
+});
+
+document.querySelector('nav.tabs button[data-tab="historico"]').addEventListener('click', ()=>renderHistorico());
+
+/* ============================================================
+   HELPER: compute a partir de um state externo (para histórico)
+   ============================================================ */
+function computeFromState(s){
+  const prev = state;
+  state = s;
+  const r = compute();
+  state = prev;
+  return r;
+}
+
+/* ============================================================
+   EXPORTAÇÃO EXCEL — usa SheetJS via CDN
+   ============================================================ */
+function loadSheetJS(){
+  return new Promise((res,rej)=>{
+    if(window.XLSX){ res(window.XLSX); return; }
+    // CDN oficial do SheetJS (não bloqueado por CSP do SharePoint/OneDrive)
+    const s=document.createElement('script');
+    s.src='https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js';
+    s.onload=()=>res(window.XLSX);
+    s.onerror=()=>{
+      // fallback: unpkg
+      const s2=document.createElement('script');
+      s2.src='https://unpkg.com/xlsx@0.18.5/dist/xlsx.full.min.js';
+      s2.onload=()=>res(window.XLSX);
+      s2.onerror=()=>rej(new Error('SheetJS não carregou — verifique a conexão'));
+      document.head.appendChild(s2);
+    };
+    document.head.appendChild(s);
+  });
+}
+
+async function exportarExcel(st, r){
+  const XLSX = await loadSheetJS();
+  const wb = XLSX.utils.book_new();
+
+  /* ---- ABA 1: DADOS DA OBRA ---- */
+  const dadosObra = [
+    ['Campo','Valor'],
+    ['Empresa', st.info.empresa],
+    ['Cliente', st.info.cliente],
+    ['Obra / Projeto', st.info.obra],
+    ['Endereço', st.info.endereco],
+    ['Vendedor', st.info.vendedor],
+    ['Responsável Técnico', st.info.responsavel],
+    ['Área / Hectares', st.info.hectares],
+    ['Número de Pivôs', st.info.numPivos],
+  ];
+  const ws1 = XLSX.utils.aoa_to_sheet(dadosObra);
+  ws1['!cols'] = [{wch:28},{wch:40}];
+  XLSX.utils.book_append_sheet(wb, ws1, 'Dados da Obra');
+
+  /* ---- ABA 2: TAREFAS DE MONTAGEM ---- */
+  const tarefasRows = [['ID','Grupo','Descrição','Tipo','Horas/un','Qtd / Metros','Horas Total','Valor Montador (R$)','Valor Auxiliar (R$)']];
+  TASKS.forEach(t=>{
+    const qtd = n(st.tasks[t.id])||0;
+    const pt = r.perTask[t.id];
+    tarefasRows.push([
+      t.id, t.grupo, t.desc,
+      t.tipo==='fix' ? 'R$/metro' : 'Hora Técnica',
+      t.horas, qtd,
+      pt.horasTotal, pt.vMont, pt.vAux
+    ]);
+  });
+  tarefasRows.push([]);
+  tarefasRows.push(['','','','','','TMO Total (h)', r.tmoTotal,'','']);
+  tarefasRows.push(['','','','','','Pagamento Montador', '', r.laborMont,'']);
+  tarefasRows.push(['','','','','','Pagamento Auxiliar', '', '', r.laborAux]);
+  tarefasRows.push(['','','','','','Encargos Time (total)', '', r.encargosTime,'']);
+  const ws2 = XLSX.utils.aoa_to_sheet(tarefasRows);
+  ws2['!cols'] = [{wch:10},{wch:24},{wch:52},{wch:14},{wch:10},{wch:14},{wch:12},{wch:18},{wch:18}];
+  XLSX.utils.book_append_sheet(wb, ws2, 'Tarefas de Montagem');
+
+  /* ---- ABA 3: CUSTOS GERAIS ---- */
+  const custosRows = [
+    ['EQUIPE & LOGÍSTICA','',''],
+    ['Campo','Valor',''],
+    ['Qtd. Equipes', st.equipe.qtdEquipes,''],
+    ['Qtd. Pessoas (calculado)', r.qtdPessoas,''],
+    ['KM Diário', st.equipe.kmDiario,''],
+    ['KM Adicional de Origem', st.equipe.kmOrigem,''],
+    ['Dist. KM da Loja', st.equipe.kmLoja,''],
+    ['Horas Adicionais', st.equipe.adcHr,''],
+    ['TMO de Obra (h)', r.tmoTotal,''],
+    ['Dias Corridos (estimado)', r.diasCorridos,''],
+    ['Prazo Estimado (dias)', r.prazoEstimado,''],
+    ['Margem de Lucro (%)', st.financeiro.margem,''],
+    [],
+    ['CUSTOS — PIVÔS','Qtd/Dias','Total (R$)'],
+    ['Hospedagem', r.hospQtd, r.hospTotal],
+    ['KM Translado', r.kmQtd, r.kmTotal],
+    ['Alimentação', r.alimQtd, r.alimTotal],
+    ['Trator MCPO', st.equipe.diasTrator, r.tratorTotal],
+    ['Hora Técnica', r.horaQtd, r.horaTotal],
+    ['Caminhão MCPO', st.equipe.diasCaminhao, r.caminhaoTotal],
+    ['Frete Máquinas MCPO', st.equipe.kmLoja, r.freteTotal],
+    ['Máquina PEAD', r.peadDias, r.peadTotal],
+    ['Caminhão Munck', st.equipe.diasMunck, r.munckTotal],
+    ['SUBTOTAL PIVÔS','', r.totalPivos],
+    [],
+    ['CUSTOS — ADUTORA & INFRAESTRUTURA','Qtd','Total (R$)'],
+    ['Frete Escavadeira', st.equipe.kmLoja, r.fEscTotal],
+    ['Escavadeira p/ Adutora (metros)', r.adutoraMetros, r.escTotal],
+    ['Base Pivô', st.info.numPivos, r.baseTotal],
+    ['Casa de Bomba', st.equipe.casaM2, r.casaTotal],
+    ['SUBTOTAL ADUTORA & INFRA','', r.totalAdutora + r.totalInfra],
+    [],
+    ['CONTRATOS EXTRAS','Qtd','Total (R$)'],
+    ...st.extras.map(ex=>[ex.desc+' ('+ex.unidade+')', ex.qtd, n(ex.valorTotal)]),
+    ['SUBTOTAL EXTRAS','', r.totalExtras],
+    [],
+    ['Encargos Time (mão de obra)','', r.encargosTime],
+    ['Desconto (%)', st.financeiro.desconto+'%',''],
+    ['CUSTO TOTAL DA OBRA','', r.custoTotalObra],
+  ];
+  const ws3 = XLSX.utils.aoa_to_sheet(custosRows);
+  ws3['!cols'] = [{wch:38},{wch:16},{wch:18}];
+  XLSX.utils.book_append_sheet(wb, ws3, 'Custos Gerais');
+
+  /* ---- ABA 4: PROPOSTA COMERCIAL ---- */
+  const servicosContratados = SERVICOS_DEFS.filter(s=>st.servicos[s.key]).map(s=>s.label).join(', ');
+  const servicosCliente = SERVICOS_DEFS.filter(s=>!st.servicos[s.key]).map(s=>s.label).join(', ');
+  const propostaRows = [
+    ['PROPOSTA COMERCIAL — MONTAGEM DE PIVÔS DE IRRIGAÇÃO'],
+    ['Empresa', st.info.empresa],
+    ['Data', new Date().toLocaleDateString('pt-BR')],
+    [],
+    ['IDENTIFICAÇÃO',''],
+    ['Cliente', st.info.cliente],
+    ['Obra / Projeto', st.info.obra],
+    ['Endereço', st.info.endereco],
+    ['Vendedor', st.info.vendedor],
+    ['Responsável Técnico', st.info.responsavel],
+    ['Área / Hectares', st.info.hectares],
+    [],
+    ['RESUMO TÉCNICO',''],
+    ['TMO de Obra (h)', r.tmoTotal],
+    ['Prazo Estimado (dias)', r.prazoEstimado],
+    ['Qtd. Equipes', st.equipe.qtdEquipes],
+    ['Qtd. Pivôs', st.info.numPivos],
+    ['Qtd. Lances', n(st.tasks['MONT-001'])],
+    ['Metros de Adutora', r.adutoraMetros],
+    ['Qtd. Motobombas', n(st.tasks['ELET-003'])],
+    ['Solda PEAD (un)', n(st.tasks['MONT-010'])],
+    [],
+    ['SERVIÇOS FORNECIDOS PELA MCPO', servicosContratados],
+    ['SERVIÇOS FORNECIDOS PELO CLIENTE', servicosCliente],
+    [],
+    ['PRECIFICAÇÃO',''],
+    ['Custo Total da Obra (R$)', r.custoTotalObra],
+    ['Desconto (%)', st.financeiro.desconto],
+    ['Imposto (%)', st.financeiro.imposto],
+    ['Margem de Lucro (%)', st.financeiro.margem],
+    ['Imposto sobre Proposta (R$)', r.impostoValor],
+    ['Lucro Líquido Estimado (R$)', r.lucro],
+    ['Margem Líquida Real (%)', r.margemReal],
+    [],
+    ['VALOR TOTAL DA PROPOSTA (R$)', r.valorFinal],
+    [],
+    ['OBSERVAÇÕES',''],
+    [st.observacoes||'—'],
+  ];
+  const ws4 = XLSX.utils.aoa_to_sheet(propostaRows);
+  ws4['!cols'] = [{wch:38},{wch:50}];
+  XLSX.utils.book_append_sheet(wb, ws4, 'Proposta Comercial');
+
+  /* ---- ABA 5: STATE INTERNO (para reimportação) ---- */
+  const stateJson = JSON.stringify(st, null, 2);
+  const wsState = XLSX.utils.aoa_to_sheet([
+    ['MCPO_STATE_V1 — Não edite esta aba. Usada para reimportação completa pelo sistema.'],
+    [stateJson],
+  ]);
+  wsState['!cols'] = [{wch:120}];
+  XLSX.utils.book_append_sheet(wb, wsState, '_MCPO_STATE');
+
+  /* ---- Gerar arquivo ---- */
+  const nomeCliente = (st.info.cliente||'SemCliente').replace(/[^a-zA-Z0-9À-ÿ ]/g,'').trim().replace(/ /g,'_');
+  const nomeObra = (st.info.obra||'SemObra').replace(/[^a-zA-Z0-9À-ÿ ]/g,'').trim().replace(/ /g,'_');
+  const dataStr = new Date().toLocaleDateString('pt-BR').replace(/\//g,'-');
+  const filename = `MCPO_${nomeCliente}_${nomeObra}_${dataStr}.xlsx`;
+
+  const wbOut = XLSX.write(wb, {bookType:'xlsx', type:'array'});
+  // download local
+  const blob = new Blob([wbOut], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a'); a.href=url; a.download=filename; a.click();
+  URL.revokeObjectURL(url);
+  // salvar no OneDrive se logado
+  await salvarExcelOneDrive(wbOut, filename);
+}
+
+/* ---- Exportar histórico completo como Excel (aba resumo + uma linha por obra) ---- */
+async function exportarHistoricoExcel(){
+  const XLSX = await loadSheetJS();
+  const list = await loadHistorico();
+  if(!list.length){ toast('Nenhuma obra no histórico.'); return; }
+
+  const wb = XLSX.utils.book_new();
+
+  /* aba RESUMO: uma linha por obra */
+  const cabecalho = ['Data Salvo','Cliente','Obra','Vendedor','Resp. Técnico','Área','Pivôs','TMO (h)','Prazo (dias)','Equipes','Adutora (m)','Custo Total (R$)','Desconto (%)','Imposto (%)','Margem (%)','Valor Proposta (R$)','Lucro Líquido (R$)','Margem Real (%)'];
+  const rows = [cabecalho];
+  list.forEach(item=>{
+    const r = computeFromState(item.data);
+    const s = item.data;
+    rows.push([
+      new Date(item.savedAt).toLocaleString('pt-BR'),
+      s.info.cliente, s.info.obra, s.info.vendedor, s.info.responsavel,
+      s.info.hectares, s.info.numPivos,
+      r.tmoTotal, r.prazoEstimado, s.equipe.qtdEquipes,
+      r.adutoraMetros, r.custoTotalObra,
+      s.financeiro.desconto, s.financeiro.imposto, s.financeiro.margem,
+      r.valorFinal, r.lucro, r.margemReal
+    ]);
+  });
+  const wsRes = XLSX.utils.aoa_to_sheet(rows);
+  wsRes['!cols'] = cabecalho.map((_,i)=>({wch: i<2?28:i<6?22:14}));
+  XLSX.utils.book_append_sheet(wb, wsRes, 'Resumo Histórico');
+
+  /* uma aba por obra com detalhes + state */
+  list.forEach((item, idx)=>{
+    const r = computeFromState(item.data);
+    const s = item.data;
+    const nome = ('Obra '+(idx+1)+' '+( s.info.cliente||'').slice(0,18)).slice(0,31);
+    const detRows = [
+      ['Cliente', s.info.cliente],['Obra', s.info.obra],['Vendedor', s.info.vendedor],
+      ['Data Salvo', new Date(item.savedAt).toLocaleString('pt-BR')],
+      [],
+      ['Pivôs', s.info.numPivos],['TMO (h)', r.tmoTotal],['Prazo (dias)', r.prazoEstimado],
+      ['Adutora (m)', r.adutoraMetros],
+      [],
+      ['Custo Total', r.custoTotalObra],['Desconto (%)', s.financeiro.desconto],
+      ['Imposto (%)', s.financeiro.imposto],['Margem (%)', s.financeiro.margem],
+      ['Valor Proposta', r.valorFinal],['Lucro Líquido', r.lucro],['Margem Real (%)', r.margemReal],
+      [],
+      ['TAREFAS','Qtd','Horas Total','Valor Montador','Valor Auxiliar'],
+      ...TASKS.map(t=>[
+        t.desc, n(s.tasks[t.id])||0,
+        r.perTask[t.id].horasTotal, r.perTask[t.id].vMont, r.perTask[t.id].vAux
+      ]),
+      [],
+      ['Observações', s.observacoes||'—'],
+    ];
+    const ws = XLSX.utils.aoa_to_sheet(detRows);
+    ws['!cols']=[{wch:40},{wch:14},{wch:14},{wch:18},{wch:18}];
+    XLSX.utils.book_append_sheet(wb, ws, nome);
+
+    // aba de state para reimportação individual desta obra
+    const nomeState = ('_STATE '+(idx+1)+' '+(s.info.cliente||'').slice(0,14)).slice(0,31);
+    const wsS = XLSX.utils.aoa_to_sheet([
+      ['MCPO_STATE_V1 — Não edite esta aba.'],
+      [JSON.stringify(s)],
+    ]);
+    wsS['!cols']=[{wch:120}];
+    XLSX.utils.book_append_sheet(wb, wsS, nomeState);
+  });
+
+  const dataStr = new Date().toLocaleDateString('pt-BR').replace(/\//g,'-');
+  const filename = `MCPO_Historico_Completo_${dataStr}.xlsx`;
+
+  const wbOut = XLSX.write(wb, {bookType:'xlsx', type:'array'});
+  const blob  = new Blob([wbOut], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+  const url   = URL.createObjectURL(blob);
+  const a     = document.createElement('a'); a.href=url; a.download=filename; a.click();
+  URL.revokeObjectURL(url);
+  await salvarExcelOneDrive(wbOut, filename);
+  toast('Excel do histórico gerado!');
+}
+
+document.getElementById('btn-exportar-excel').addEventListener('click', ()=>{
+  const r = LAST || compute();
+  exportarExcel(state, r);
+  toast('Gerando Excel da obra atual...');
+});
+
+document.getElementById('btn-exportar-hist-excel').addEventListener('click', exportarHistoricoExcel);
+
+/* ============================================================
+   IMPORTAÇÃO DE EXCEL (lê aba _MCPO_STATE ou _STATE N)
+   ============================================================ */
+document.getElementById('inp-importar-excel').addEventListener('change', async function(){
+  const file = this.files[0];
+  if(!file){ return; }
+  this.value = ''; // reset para permitir reimportar o mesmo arquivo
+
+  try{
+    const XLSX = await loadSheetJS();
+    const buf = await file.arrayBuffer();
+    const wb = XLSX.read(buf, {type:'array'});
+
+    // procurar aba(s) que comecem com _MCPO_STATE ou _STATE
+    const stateSheets = wb.SheetNames.filter(n => n === '_MCPO_STATE' || n.startsWith('_STATE '));
+
+    if(!stateSheets.length){
+      toast('Excel sem aba de reimportação. Exporte pelo sistema primeiro.');
+      return;
+    }
+
+    const importados = [];
+    for(const sheetName of stateSheets){
+      const ws = wb.Sheets[sheetName];
+      const rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:''});
+      // linha 0 = cabeçalho, linha 1 = JSON
+      const jsonStr = rows[1] && rows[1][0];
+      if(!jsonStr){ continue; }
+      try{
+        const parsed = JSON.parse(String(jsonStr));
+        // mesclar com defaultState para garantir campos novos que possam ter sido adicionados
+        const base = defaultState();
+        const merged = {
+          info:      {...base.info,      ...parsed.info},
+          equipe:    {...base.equipe,    ...parsed.equipe},
+          servicos:  {...base.servicos,  ...parsed.servicos},
+          precos:    {...base.precos,    ...parsed.precos},
+          tasks:     {...base.tasks,     ...parsed.tasks},
+          extras:    parsed.extras || base.extras,
+          financeiro:{...base.financeiro,...parsed.financeiro},
+          observacoes: parsed.observacoes || '',
+        };
+        importados.push(merged);
+      }catch(e){
+        console.warn('Falha ao parsear state de', sheetName, e);
+      }
+    }
+
+    if(!importados.length){
+      toast('Nenhum orçamento válido encontrado no arquivo.');
+      return;
+    }
+
+    if(importados.length === 1){
+      // arquivo de obra única: carrega direto e pergunta se salva no histórico
+      state = importados[0];
+      renderAll();
+      document.querySelector('nav.tabs button[data-tab="obra"]').click();
+      toast('Obra importada! Verifique os dados e salve no histórico se quiser.');
+    } else {
+      // arquivo de histórico completo: salva todas no histórico
+      const list = await loadHistorico();
+      let adicionados = 0;
+      importados.forEach(s=>{
+        list.push({
+          id: 'obra-'+Date.now()+'-'+Math.random().toString(36).slice(2,7)+'-'+adicionados,
+          savedAt: Date.now(),
+          valorFinal: computeFromState(s).valorFinal,
+          data: s,
+        });
+        adicionados++;
+      });
+      await saveHistorico(list);
+      renderHistorico();
+      toast(adicionados + ' obra(s) importada(s) para o histórico!');
+    }
+
+  }catch(e){
+    console.error('Erro na importação:', e);
+    toast('Erro ao ler o arquivo. Verifique se é um Excel exportado pelo sistema.');
+  }
+});
+
+/* ---------- render all (initial + after load) ---------- */
+function renderAll(){
+  renderTasks();
+  renderServicos();
+  renderExtras();
+  fillSimpleInputsFromState();
+  bindSimpleInputs();
+  recalc();
+}
+renderAll();
+initMsal();
+</script>
+</body>
+</html>
