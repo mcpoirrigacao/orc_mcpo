@@ -1333,23 +1333,71 @@ async function ensureFolder(){
 }
 
 /* ============================================================
-   HISTÓRICO — OneDrive se logado, localStorage como fallback
+   HISTÓRICO — um arquivo por usuário no SharePoint
+   Arquivo: historico_{email_sanitizado}.json
+   Admin lê todos os arquivos da pasta
    ============================================================ */
 const HIST_KEY_LOCAL = 'mcpo-historico-obras';
 
+// Sanitiza e-mail para nome de arquivo seguro
+function emailParaFilename(email){
+  return 'historico_' + email.toLowerCase().replace(/[^a-z0-9]/g, '_') + '.json';
+}
+
+// Carrega o arquivo de histórico de um e-mail específico
+async function loadHistoricoDeEmail(email){
+  const token = await getGraphToken();
+  if(!token) return [];
+  try{
+    const filename = emailParaFilename(email);
+    const base = await spDriveUrl(spPath(filename));
+    if(!base) return [];
+    const r = await fetch(base + ':/content', { headers:{ Authorization: 'Bearer ' + token } });
+    if(r.status === 404) return [];
+    if(!r.ok) return [];
+    return JSON.parse(await r.text());
+  }catch(e){ return []; }
+}
+
+// Lista todos os arquivos de histórico na pasta
+async function listarArquivosHistorico(){
+  const token = await getGraphToken();
+  if(!token) return [];
+  try{
+    const base = await spDriveUrl(`/${SP_BIBLIOTECA}/${SP_PASTA}`);
+    if(!base) return [];
+    const r = await fetch(base + ':/children?$select=name', { headers:{ Authorization: 'Bearer ' + token } });
+    if(!r.ok) return [];
+    const data = await r.json();
+    return (data.value || [])
+      .map(f=>f.name)
+      .filter(n=>n.startsWith('historico_') && n.endsWith('.json'));
+  }catch(e){ return []; }
+}
+
 async function loadHistorico(){
-  // --- SharePoint compartilhado ---
   if(msAccount){
-    try{
-      const token = await getGraphToken();
-      if(!token) return [];
-      const base = await spDriveUrl(spPath(HIST_FILENAME));
-      if(!base) return [];
-      const r = await fetch(base + ':/content', { headers:{ Authorization: 'Bearer ' + token } });
-      if(r.status === 404) return [];
-      if(!r.ok) return [];
-      return JSON.parse(await r.text());
-    }catch(e){ console.warn('loadHistorico SP error:', e); return []; }
+    const nivel = nivelAcesso();
+    if(nivel === 'admin'){
+      // Admin: lê todos os arquivos de histórico da pasta
+      try{
+        const arquivos = await listarArquivosHistorico();
+        if(!arquivos.length) return [];
+        const todos = await Promise.all(arquivos.map(async filename=>{
+          const token = await getGraphToken();
+          if(!token) return [];
+          const base = await spDriveUrl(spPath(filename));
+          if(!base) return [];
+          const r = await fetch(base + ':/content', { headers:{ Authorization: 'Bearer ' + token } });
+          if(!r.ok) return [];
+          try{ return JSON.parse(await r.text()); }catch(e){ return []; }
+        }));
+        return todos.flat();
+      }catch(e){ console.warn('loadHistorico admin error:', e); return []; }
+    } else {
+      // Usuário comum: lê apenas seu próprio arquivo
+      return await loadHistoricoDeEmail(emailUsuarioAtual());
+    }
   }
   // --- localStorage fallback ---
   try{ const r = localStorage.getItem(HIST_KEY_LOCAL); return r ? JSON.parse(r) : []; }
@@ -1358,12 +1406,12 @@ async function loadHistorico(){
 
 async function saveHistorico(list){
   const json = JSON.stringify(list, null, 2);
-  // --- SharePoint compartilhado ---
   if(msAccount){
     await ensureFolder();
-    return await graphPut(spPath(HIST_FILENAME), new TextEncoder().encode(json));
+    // Sempre salva no arquivo do usuário atual
+    const filename = emailParaFilename(emailUsuarioAtual());
+    return await graphPut(spPath(filename), new TextEncoder().encode(json));
   }
-  // --- localStorage fallback ---
   try{ localStorage.setItem(HIST_KEY_LOCAL, json); return true; }
   catch(e){ return false; }
 }
@@ -1384,18 +1432,10 @@ async function renderHistorico(filtro=''){
   _histCache = await loadHistorico();
 
   const nivel = nivelAcesso();
-  const emailAtual = emailUsuarioAtual();
-
-  // Filtro por nível: comum vê só os seus, admin vê todos
-  let lista = _histCache.slice().reverse().filter(item=>{
-    if(nivel === 'admin') return true;
-    // comum: só obras salvas pelo próprio e-mail
-    const by = item.savedBy || {};
-    return (by.email || '').toLowerCase() === emailAtual;
-  });
 
   // Filtro de busca
   const busca = filtro.toLowerCase().trim();
+  let lista = _histCache.slice().reverse();
   if(busca){
     lista = lista.filter(item=>
       (item.data.info.cliente||'').toLowerCase().includes(busca) ||
@@ -1405,17 +1445,13 @@ async function renderHistorico(filtro=''){
   }
 
   if(!_histCache.length){
-    wrap.innerHTML = '<div class="empty-state">Nenhuma obra salva ainda. Vá até "Resumo &amp; Proposta" e clique em "Salvar no Histórico".</div>';
-    return;
-  }
-  if(!lista.length && busca){
-    wrap.innerHTML = '<div class="empty-state">Nenhuma obra encontrada para "'+filtro+'".</div>';
+    wrap.innerHTML = nivel === 'comum'
+      ? '<div class="empty-state">Você ainda não salvou nenhuma obra. Preencha um orçamento e salve no Histórico.</div>'
+      : '<div class="empty-state">Nenhuma obra salva ainda pela equipe.</div>';
     return;
   }
   if(!lista.length){
-    wrap.innerHTML = nivel === 'comum'
-      ? '<div class="empty-state">Você ainda não salvou nenhuma obra. Preencha um orçamento e salve no Histórico.</div>'
-      : '<div class="empty-state">Nenhuma obra no histórico.</div>';
+    wrap.innerHTML = '<div class="empty-state">Nenhuma obra encontrada para "'+filtro+'".</div>';
     return;
   }
   wrap.innerHTML='';
@@ -1442,15 +1478,14 @@ async function renderHistorico(filtro=''){
       <div class="actions" style="flex-wrap:wrap;gap:6px;">
         <button class="btn ghost small" data-open="${item.id}" type="button">Abrir</button>
         <button class="btn ghost small" data-xls="${item.id}" type="button">Excel</button>
-        <button class="btn danger small" data-del="${item.id}" type="button">Excluir</button>
+        <button class="btn danger small" data-del="${item.id}" data-del-email="${(item.savedBy||{}).email||emailUsuarioAtual()}" type="button">Excluir</button>
       </div>`;
     wrap.appendChild(div);
   });
 
   wrap.querySelectorAll('button[data-open]').forEach(btn=>{
     btn.addEventListener('click', async ()=>{
-      const all = await loadHistorico();
-      const item = all.find(x=>x.id===btn.dataset.open);
+      const item = _histCache.find(x=>x.id===btn.dataset.open);
       if(item){
         state = JSON.parse(JSON.stringify(item.data));
         renderAll();
@@ -1460,18 +1495,31 @@ async function renderHistorico(filtro=''){
     });
   });
   wrap.querySelectorAll('button[data-xls]').forEach(btn=>{
-    btn.addEventListener('click', async ()=>{
-      const all = await loadHistorico();
-      const item = all.find(x=>x.id===btn.dataset.xls);
+    btn.addEventListener('click', ()=>{
+      const item = _histCache.find(x=>x.id===btn.dataset.xls);
       if(item){ exportarExcel(item.data, computeFromState(item.data)); toast('Gerando Excel...'); }
     });
   });
   wrap.querySelectorAll('button[data-del]').forEach(btn=>{
     btn.addEventListener('click', async ()=>{
-      if(!confirm('Excluir esta obra do histórico compartilhado?')) return;
-      let all = await loadHistorico();
-      all = all.filter(x=>x.id!==btn.dataset.del);
-      await saveHistorico(all);
+      if(!confirm('Excluir esta obra do histórico?')) return;
+      const emailDono = btn.dataset.delEmail || emailUsuarioAtual();
+      // Carregar o arquivo do dono da obra e remover apenas ela
+      let lista;
+      if(msAccount && emailDono !== emailUsuarioAtual()){
+        lista = await loadHistoricoDeEmail(emailDono);
+      } else {
+        lista = await loadHistoricoDeEmail(emailUsuarioAtual());
+      }
+      lista = lista.filter(x=>x.id!==btn.dataset.del);
+      // Salvar no arquivo do dono
+      const json = JSON.stringify(lista, null, 2);
+      if(msAccount){
+        await ensureFolder();
+        await graphPut(spPath(emailParaFilename(emailDono)), new TextEncoder().encode(json));
+      }
+      // Recarregar cache e re-render
+      _histCache = _histCache.filter(x=>x.id!==btn.dataset.del);
       renderHistorico(document.getElementById('hist-busca').value);
       toast('Obra excluída');
     });
@@ -1484,7 +1532,10 @@ document.getElementById('hist-busca').addEventListener('input', e=>{
 
 document.getElementById('btn-save-hist').addEventListener('click', async ()=>{
   const r = LAST || compute();
-  const list = await loadHistorico();
+  // Carrega apenas o arquivo do usuário atual (não todos)
+  const list = msAccount
+    ? await loadHistoricoDeEmail(emailUsuarioAtual())
+    : (()=>{ try{ const x=localStorage.getItem(HIST_KEY_LOCAL); return x?JSON.parse(x):[]; }catch(e){ return []; } })();
   const savedBy = msAccount
     ? { nome: msAccount.name || '', email: msAccount.username || '' }
     : { nome: 'Não identificado', email: '' };
