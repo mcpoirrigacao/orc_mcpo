@@ -1137,19 +1137,51 @@ const MSAL_CONFIG = {
   },
   cache: { cacheLocation: 'localStorage', storeAuthStateInCookie: true },
 };
-const GRAPH_SCOPES = ['Files.ReadWrite', 'User.Read'];
-const SP_SITE        = 'maqcampoirrigacao.sharepoint.com:/sites/MCPOIRRIGACAO';
+const GRAPH_SCOPES = ['Files.ReadWrite', 'Sites.ReadWrite.All', 'User.Read'];
+const SP_HOSTNAME    = 'maqcampoirrigacao.sharepoint.com';
+const SP_SITE_PATH   = '/sites/MCPOIRRIGACAO';
 const SP_BIBLIOTECA  = 'Documentos Compartilhados';
 const SP_PASTA       = 'Orçamentos Montagem/Historico_montagem';
 const HIST_FILENAME  = 'historico.json';
 const PARAMS_FILENAME = 'parametros.json';
 
-// Monta o path completo dentro da biblioteca SharePoint
+// Codifica apenas segmentos — preserva as barras
+function spEncodePath(path){
+  return path.split('/').map(seg => encodeURIComponent(seg)).join('/');
+}
+
+// Path completo na biblioteca
 function spPath(filename){
   return `/${SP_BIBLIOTECA}/${SP_PASTA}/${filename}`;
 }
 
-const HIST_KEY        = 'mcpo-historico-obras'; // fallback localStorage
+// Resolve o site ID dinamicamente (formato correto para Graph API)
+let _spSiteId = null;
+async function getSiteId(){
+  if(_spSiteId) return _spSiteId;
+  const token = await getGraphToken();
+  if(!token){ console.error('getSiteId: sem token'); return null; }
+  try{
+    const url = `https://graph.microsoft.com/v1.0/sites/${SP_HOSTNAME}:${SP_SITE_PATH}`;
+    console.log('getSiteId URL:', url);
+    const r = await fetch(url, { headers:{ Authorization: 'Bearer ' + token } });
+    const text = await r.text();
+    console.log('getSiteId status:', r.status, text.slice(0,400));
+    if(!r.ok) return null;
+    const data = JSON.parse(text);
+    _spSiteId = data.id;
+    console.log('✅ SP Site ID:', _spSiteId);
+    return _spSiteId;
+  }catch(e){ console.error('getSiteId exception:', e); return null; }
+}
+
+async function spDriveUrl(filePath){
+  const siteId = await getSiteId();
+  if(!siteId){ console.error('spDriveUrl: siteId null para', filePath); return null; }
+  return `https://graph.microsoft.com/v1.0/sites/${siteId}/drive/root:${spEncodePath(filePath)}`;
+}
+
+const HIST_KEY = 'mcpo-historico-obras'; // fallback localStorage
 
 let msalInstance = null;
 let msAccount    = null;
@@ -1270,40 +1302,35 @@ function spEncodePath(path){
   return path.split('/').map(seg => encodeURIComponent(seg)).join('/');
 }
 
-async function graphPut(spFilePath, body){
+async function graphPut(filePath, body){
   const token = await getGraphToken();
   if(!token) return false;
-  // URL correta: /sites/{site}/drive/root:{path}:/content
-  const url = `https://graph.microsoft.com/v1.0/sites/${SP_SITE}/drive/root:${spEncodePath(spFilePath)}:/content`;
-  const r = await fetch(url, {
+  const base = await spDriveUrl(filePath);
+  if(!base) return false;
+  const r = await fetch(base + ':/content', {
     method: 'PUT',
     headers:{ Authorization: 'Bearer ' + token, 'Content-Type': 'application/octet-stream' },
     body
   });
-  if(!r.ok){
-    const err = await r.text().catch(()=>'');
-    console.error('graphPut error', r.status, err);
-  }
+  if(!r.ok){ console.error('graphPut error', r.status, await r.text().catch(()=>'')); }
   return r.ok;
 }
 
-// Garante que a pasta existe no SharePoint compartilhado
 async function ensureFolder(){
   const token = await getGraphToken();
   if(!token) return false;
-  // Pastas a garantir em ordem hierárquica
   const pastas = [
-    { pai: `/${SP_BIBLIOTECA}`,                    nome: 'Orçamentos Montagem' },
-    { pai: `/${SP_BIBLIOTECA}/Orçamentos Montagem`, nome: 'Historico_montagem'  },
+    { pai: `/${SP_BIBLIOTECA}`,                     nome: 'Orçamentos Montagem' },
+    { pai: `/${SP_BIBLIOTECA}/Orçamentos Montagem`,  nome: 'Historico_montagem'  },
   ];
   for(const { pai, nome } of pastas){
-    const url = `https://graph.microsoft.com/v1.0/sites/${SP_SITE}/drive/root:${spEncodePath(pai)}:/children`;
-    await fetch(url, {
+    const base = await spDriveUrl(pai);
+    if(!base) continue;
+    await fetch(base + ':/children', {
       method: 'POST',
       headers:{ Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
       body: JSON.stringify({ name: nome, folder:{}, '@microsoft.graph.conflictBehavior':'fail' })
     });
-    // 409 = já existe — ignoramos; outros erros também ignoramos pois a pasta pode já existir
   }
   return true;
 }
@@ -1319,8 +1346,9 @@ async function loadHistorico(){
     try{
       const token = await getGraphToken();
       if(!token) return [];
-      const url = `https://graph.microsoft.com/v1.0/sites/${SP_SITE}/drive/root:${spEncodePath(spPath(HIST_FILENAME))}:/content`;
-      const r = await fetch(url, { headers:{ Authorization: 'Bearer ' + token } });
+      const base = await spDriveUrl(spPath(HIST_FILENAME));
+      if(!base) return [];
+      const r = await fetch(base + ':/content', { headers:{ Authorization: 'Bearer ' + token } });
       if(r.status === 404) return [];
       if(!r.ok) return [];
       return JSON.parse(await r.text());
@@ -1852,8 +1880,9 @@ async function loadParams(){
     try{
       const token = await getGraphToken();
       if(!token) return null;
-      const url = `https://graph.microsoft.com/v1.0/sites/${SP_SITE}/drive/root:${spEncodePath(spPath(PARAMS_FILENAME))}:/content`;
-      const r = await fetch(url, { headers:{ Authorization: 'Bearer ' + token } });
+      const base = await spDriveUrl(spPath(PARAMS_FILENAME));
+      if(!base) return null;
+      const r = await fetch(base + ':/content', { headers:{ Authorization: 'Bearer ' + token } });
       if(r.status === 404) return null;
       if(!r.ok) return null;
       return JSON.parse(await r.text());
