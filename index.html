@@ -1157,17 +1157,23 @@ let _spSiteId = null;
 async function getSiteId(){
   if(_spSiteId) return _spSiteId;
   const token = await getGraphToken();
-  if(!token){ console.error('getSiteId: sem token'); return null; }
+  if(!token){ console.error('getSiteId: sem token — escopos insuficientes?'); return null; }
   try{
     const url = `https://graph.microsoft.com/v1.0/sites/${SP_HOSTNAME}:${SP_SITE_PATH}`;
-    console.log('getSiteId URL:', url);
+    console.log('getSiteId: chamando', url);
     const r = await fetch(url, { headers:{ Authorization: 'Bearer ' + token } });
     const text = await r.text();
-    console.log('getSiteId status:', r.status, text.slice(0,400));
-    if(!r.ok) return null;
+    console.log('getSiteId: status', r.status, text.slice(0, 500));
+    if(!r.ok){
+      // Erro 403 = permissão negada para este usuário
+      if(r.status === 403){
+        console.error('getSiteId: 403 Forbidden — usuário não tem Sites.ReadWrite.All. Verifique o admin consent no Azure.');
+      }
+      return null;
+    }
     const data = JSON.parse(text);
     _spSiteId = data.id;
-    console.log('✅ SP Site ID:', _spSiteId);
+    console.log('✅ getSiteId resolvido:', _spSiteId);
     return _spSiteId;
   }catch(e){ console.error('getSiteId exception:', e); return null; }
 }
@@ -1408,9 +1414,11 @@ async function saveHistorico(list){
   const json = JSON.stringify(list, null, 2);
   if(msAccount){
     await ensureFolder();
-    // Sempre salva no arquivo do usuário atual
     const filename = emailParaFilename(emailUsuarioAtual());
-    return await graphPut(spPath(filename), new TextEncoder().encode(json));
+    console.log('saveHistorico: gravando arquivo', filename);
+    const ok = await graphPut(spPath(filename), new TextEncoder().encode(json));
+    console.log('saveHistorico: resultado', ok ? '✅ OK' : '❌ FALHOU');
+    return ok;
   }
   try{ localStorage.setItem(HIST_KEY_LOCAL, json); return true; }
   catch(e){ return false; }
@@ -2017,16 +2025,20 @@ function aplicarControleAcesso(){
   }
   overlayNegado.style.display = 'none';
 
-  // 3 — Aba parâmetros: só admin
+  // Aba parâmetros: SOMENTE admin — nunca comum, nunca deslogado
   const tabParam = document.getElementById('tab-parametros');
   if(tabParam) tabParam.style.display = nivel === 'admin' ? '' : 'none';
 
-  // Se usuário comum estiver na aba parâmetros, redirecionar para obra
-  if(nivel === 'comum'){
+  // Garantia extra: se aba parâmetros estiver ativa e usuário não for admin, redireciona
+  if(nivel !== 'admin'){
     const paneParam = document.getElementById('pane-parametros');
     if(paneParam && paneParam.classList.contains('active')){
       document.querySelector('nav.tabs button[data-tab="obra"]').click();
     }
+    // Bloquear clique direto na aba mesmo se visível por bug
+    if(tabParam) tabParam.onclick = (e)=>{ e.preventDefault(); e.stopPropagation(); toast('Acesso restrito a administradores.'); return false; };
+  } else {
+    if(tabParam) tabParam.onclick = null;
   }
 
   // 4 — Campos de parâmetro nas abas normais — sempre bloqueados para todos
