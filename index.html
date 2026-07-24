@@ -550,13 +550,23 @@ function loadMsal(){
 
     <div class="card">
       <h3>E-mails Autorizados a Editar Parâmetros</h3>
-      <p class="pane-desc" style="margin-bottom:10px;">Adicione os e-mails Microsoft (login) que podem editar os campos de parâmetro. O e-mail deve ser exatamente igual ao usado no login.</p>
+      <p class="pane-desc" style="margin-bottom:10px;">Administradores — podem editar parâmetros de cálculo e cadastrar usuários.</p>
       <div id="emails-list"></div>
       <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;">
         <input type="text" id="inp-novo-email" placeholder="email@empresa.com" style="flex:1;min-width:200px;border:1px solid var(--borda);border-radius:4px;padding:8px 10px;font-size:.88rem;background:#fffdf9;">
         <button class="btn primary small" id="btn-add-email" type="button">+ Adicionar</button>
       </div>
-      <div class="note" style="margin-top:10px;">O e-mail do usuário atual logado: <strong id="email-atual-logado">—</strong></div>
+    </div>
+
+    <div class="card">
+      <h3>Usuários Comuns</h3>
+      <p class="pane-desc" style="margin-bottom:10px;">Podem preencher orçamentos e salvar histórico, mas não editam parâmetros. Apenas e-mails cadastrados aqui ou como administrador conseguem usar o app.</p>
+      <div id="emails-comuns-list"></div>
+      <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;">
+        <input type="text" id="inp-novo-email-comum" placeholder="email@empresa.com" style="flex:1;min-width:200px;border:1px solid var(--borda);border-radius:4px;padding:8px 10px;font-size:.88rem;background:#fffdf9;">
+        <button class="btn ghost small" id="btn-add-email-comum" type="button">+ Adicionar Usuário</button>
+      </div>
+      <div class="note" style="margin-top:10px;">E-mail do usuário atual logado: <strong id="email-atual-logado">—</strong></div>
     </div>
 
     <div class="card">
@@ -615,6 +625,17 @@ function loadMsal(){
   </section>
 
 </main>
+
+<!-- Overlay de acesso negado -->
+<div id="overlay-acesso-negado" style="display:none;position:fixed;inset:0;background:var(--azul-escuro);z-index:999;display:none;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:30px;">
+  <div style="background:#fff;border-radius:10px;padding:40px 32px;max-width:420px;width:100%;">
+    <div style="font-size:3rem;margin-bottom:16px;">🔒</div>
+    <h2 style="font-family:var(--fonte-titulo);color:var(--azul-escuro);margin:0 0 10px;">Acesso Restrito</h2>
+    <p style="color:var(--texto-suave);font-size:.9rem;margin:0 0 20px;">Seu e-mail não está cadastrado para usar este sistema. Entre em contato com o administrador para solicitar acesso.</p>
+    <div id="overlay-email-info" style="background:var(--areia);border-radius:6px;padding:10px 14px;font-size:.82rem;color:var(--texto-suave);margin-bottom:20px;word-break:break-all;"></div>
+    <button onclick="document.getElementById('btn-ms-login').click()" class="btn ghost" style="width:100%;" type="button">Entrar com outra conta</button>
+  </div>
+</div>
 
 <div class="toast" id="toast"></div>
 
@@ -1905,6 +1926,7 @@ async function saveParams(params){
 // Estrutura de parâmetros globais (separado do state de obra)
 let globalParams = {
   emailsAutorizados: [],
+  emailsComuns: [],
   precos: { ...defaultState().precos },
   imposto: 22.15,
 };
@@ -1913,42 +1935,61 @@ function emailUsuarioAtual(){
   return msAccount ? (msAccount.username || '').toLowerCase() : '';
 }
 
-function usuarioAutorizado(){
-  if(!msAccount) return false;
+function nivelAcesso(){
+  // Retorna: 'admin' | 'comum' | 'bloqueado' | 'deslogado'
+  if(!msAccount) return 'deslogado';
   const email = emailUsuarioAtual();
-  return globalParams.emailsAutorizados.map(e=>e.toLowerCase()).includes(email);
+  if(globalParams.emailsAutorizados.map(e=>e.toLowerCase()).includes(email)) return 'admin';
+  if(globalParams.emailsComuns.map(e=>e.toLowerCase()).includes(email)) return 'comum';
+  // Se não há nenhum cadastro ainda (primeiro acesso), não bloqueia
+  if(!globalParams.emailsAutorizados.length && !globalParams.emailsComuns.length) return 'admin';
+  return 'bloqueado';
 }
 
-function aplicarBloqueio(){
-  const autorizado = usuarioAutorizado();
+function usuarioAutorizado(){ return nivelAcesso() === 'admin'; }
 
-  // Campos nas abas normais (i-*) — SEMPRE bloqueados para todos
-  // Só são editáveis na aba Parâmetros (p-*)
+function aplicarControleAcesso(){
+  const nivel = nivelAcesso();
+
+  // Overlay de acesso negado
+  const overlay = document.getElementById('overlay-acesso-negado');
+  if(nivel === 'bloqueado'){
+    overlay.style.display = 'flex';
+    document.getElementById('overlay-email-info').textContent =
+      'Logado como: ' + emailUsuarioAtual();
+    return;
+  } else {
+    overlay.style.display = 'none';
+  }
+
+  // Aba parâmetros — só admin
+  const tabParam = document.getElementById('tab-parametros');
+  if(tabParam) tabParam.style.display = nivel === 'admin' ? '' : 'none';
+
+  // Campos de parâmetro nas abas normais — sempre bloqueados para todos
   PARAM_FIELD_IDS.forEach(id=>{
     const el = document.getElementById(id);
     if(!el) return;
     el.disabled = true;
     el.style.background = 'var(--areia-escura)';
     el.style.cursor = 'not-allowed';
-    el.title = 'Editável apenas na aba Parâmetros por usuários autorizados';
+    el.title = 'Editável apenas na aba Parâmetros por administradores';
   });
 
-  // Aba Parâmetros e seus campos (p-*) — só para autorizados
-  const tabParam = document.getElementById('tab-parametros');
-  if(tabParam) tabParam.style.display = autorizado ? '' : 'none';
-
-  // Campos p-* na aba Parâmetros
+  // Campos p-* na aba parâmetros — só admin
   const paramInputs = document.querySelectorAll('#pane-parametros input[type=number], #pane-parametros input[type=text]');
   paramInputs.forEach(el=>{
-    if(el.id === 'inp-novo-email') return; // campo de adicionar e-mail sempre editável para autorizados
-    el.disabled = !autorizado;
-    el.style.background = autorizado ? '#fffdf9' : 'var(--areia-escura)';
-    el.style.cursor = autorizado ? '' : 'not-allowed';
+    if(el.id === 'inp-novo-email' || el.id === 'inp-novo-email-comum') return;
+    el.disabled = nivel !== 'admin';
+    el.style.background = nivel === 'admin' ? '#fffdf9' : 'var(--areia-escura)';
+    el.style.cursor = nivel === 'admin' ? '' : 'not-allowed';
   });
   const btnSalvar = document.getElementById('btn-salvar-params');
-  if(btnSalvar) btnSalvar.disabled = !autorizado;
-  const btnAddEmail = document.getElementById('btn-add-email');
-  if(btnAddEmail) btnAddEmail.disabled = !autorizado;
+  if(btnSalvar) btnSalvar.disabled = nivel !== 'admin';
+  const btnAdd = document.getElementById('btn-add-email');
+  if(btnAdd) btnAdd.disabled = nivel !== 'admin';
+  const btnAddComum = document.getElementById('btn-add-email-comum');
+  if(btnAddComum) btnAddComum.disabled = nivel !== 'admin';
 }
 
 function aplicarParamsAoState(){
@@ -1963,27 +2004,28 @@ async function carregarEAplicarParams(){
   const p = await loadParams();
   if(p){
     if(p.emailsAutorizados) globalParams.emailsAutorizados = p.emailsAutorizados;
+    if(p.emailsComuns) globalParams.emailsComuns = p.emailsComuns;
     if(p.precos) globalParams.precos = { ...defaultState().precos, ...p.precos };
     if(p.imposto !== undefined) globalParams.imposto = p.imposto;
   }
   aplicarParamsAoState();
-  aplicarBloqueio();
+  aplicarControleAcesso();
   renderAbaParametros();
 }
 
 /* ---------- Aba Parâmetros: render e bindings ---------- */
 function renderAbaParametros(){
-  // preencher e-mails
+  // preencher e-mails admins
   const wrap = document.getElementById('emails-list');
   if(!wrap) return;
   wrap.innerHTML = '';
   if(!globalParams.emailsAutorizados.length){
-    wrap.innerHTML = '<div style="color:var(--texto-suave);font-size:.85rem;padding:6px 0;">Nenhum e-mail cadastrado ainda.</div>';
+    wrap.innerHTML = '<div style="color:var(--texto-suave);font-size:.85rem;padding:6px 0;">Nenhum administrador cadastrado ainda.</div>';
   }
   globalParams.emailsAutorizados.forEach((email, i)=>{
     const div = document.createElement('div');
     div.style.cssText = 'display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--areia-escura);font-size:.88rem;';
-    div.innerHTML = `<span style="flex:1;">👤 ${email}</span><button class="btn danger small" data-rem-email="${i}" type="button">remover</button>`;
+    div.innerHTML = `<span style="flex:1;">👤 ${email} <span style="font-size:.72rem;background:#e4eef1;color:var(--azul-claro);padding:1px 6px;border-radius:3px;font-weight:700;">ADMIN</span></span><button class="btn danger small" data-rem-email="${i}" type="button">remover</button>`;
     wrap.appendChild(div);
   });
   wrap.querySelectorAll('button[data-rem-email]').forEach(btn=>{
@@ -1992,6 +2034,27 @@ function renderAbaParametros(){
       renderAbaParametros();
     });
   });
+
+  // preencher e-mails comuns
+  const wrapComuns = document.getElementById('emails-comuns-list');
+  if(wrapComuns){
+    wrapComuns.innerHTML = '';
+    if(!globalParams.emailsComuns.length){
+      wrapComuns.innerHTML = '<div style="color:var(--texto-suave);font-size:.85rem;padding:6px 0;">Nenhum usuário comum cadastrado ainda.</div>';
+    }
+    globalParams.emailsComuns.forEach((email, i)=>{
+      const div = document.createElement('div');
+      div.style.cssText = 'display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--areia-escura);font-size:.88rem;';
+      div.innerHTML = `<span style="flex:1;">👤 ${email} <span style="font-size:.72rem;background:#f3e6de;color:var(--ferrugem);padding:1px 6px;border-radius:3px;font-weight:700;">USUÁRIO</span></span><button class="btn danger small" data-rem-comum="${i}" type="button">remover</button>`;
+      wrapComuns.appendChild(div);
+    });
+    wrapComuns.querySelectorAll('button[data-rem-comum]').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        globalParams.emailsComuns.splice(Number(btn.dataset.remComum), 1);
+        renderAbaParametros();
+      });
+    });
+  }
 
   // atualizar e-mail atual logado
   const elEmail = document.getElementById('email-atual-logado');
@@ -2015,20 +2078,41 @@ function renderAbaParametros(){
   });
 }
 
-// Botão adicionar e-mail
+// Botão adicionar e-mail admin
 document.getElementById('btn-add-email').addEventListener('click', ()=>{
   const inp = document.getElementById('inp-novo-email');
   const email = (inp.value||'').trim().toLowerCase();
   if(!email || !email.includes('@')){ toast('Digite um e-mail válido.'); return; }
   if(globalParams.emailsAutorizados.map(e=>e.toLowerCase()).includes(email)){
-    toast('E-mail já cadastrado.'); return;
+    toast('E-mail já cadastrado como administrador.'); return;
   }
   globalParams.emailsAutorizados.push(email);
+  // Remove de comuns se existir lá
+  globalParams.emailsComuns = globalParams.emailsComuns.filter(e=>e.toLowerCase()!==email);
   inp.value = '';
   renderAbaParametros();
 });
 document.getElementById('inp-novo-email').addEventListener('keydown', e=>{
   if(e.key==='Enter') document.getElementById('btn-add-email').click();
+});
+
+// Botão adicionar usuário comum
+document.getElementById('btn-add-email-comum').addEventListener('click', ()=>{
+  const inp = document.getElementById('inp-novo-email-comum');
+  const email = (inp.value||'').trim().toLowerCase();
+  if(!email || !email.includes('@')){ toast('Digite um e-mail válido.'); return; }
+  if(globalParams.emailsAutorizados.map(e=>e.toLowerCase()).includes(email)){
+    toast('E-mail já cadastrado como administrador.'); return;
+  }
+  if(globalParams.emailsComuns.map(e=>e.toLowerCase()).includes(email)){
+    toast('E-mail já cadastrado como usuário.'); return;
+  }
+  globalParams.emailsComuns.push(email);
+  inp.value = '';
+  renderAbaParametros();
+});
+document.getElementById('inp-novo-email-comum').addEventListener('keydown', e=>{
+  if(e.key==='Enter') document.getElementById('btn-add-email-comum').click();
 });
 
 // Botão salvar parâmetros
@@ -2062,7 +2146,7 @@ document.getElementById('btn-salvar-params').addEventListener('click', async ()=
   const ok = await saveParams(globalParams);
   if(ok){
     aplicarParamsAoState();
-    aplicarBloqueio();
+    aplicarControleAcesso();
     toast('Parâmetros salvos com sucesso!');
   } else {
     toast('Erro ao salvar parâmetros.');
@@ -2088,9 +2172,8 @@ let cliquesLogo = 0;
 let timerCliquesLogo = null;
 
 function tentarAcessoAdmin(){
-  // Só permite se não há e-mails cadastrados ainda
-  if(globalParams.emailsAutorizados.length > 0){
-    toast('Parâmetros já configurados. Use seu e-mail autorizado para acessar.');
+  if(globalParams.emailsAutorizados.length > 0 || globalParams.emailsComuns.length > 0){
+    toast('Sistema já configurado. Use seu e-mail autorizado para acessar.');
     return;
   }
   if(!msAccount){
@@ -2098,21 +2181,21 @@ function tentarAcessoAdmin(){
     return;
   }
   const senha = prompt('🔐 Senha de primeiro acesso (configuração inicial):');
-  if(senha === null) return; // cancelou
+  if(senha === null) return;
   if(senha === SENHA_ADMIN){
-    // libera aba parâmetros temporariamente — sem desbloquear campos nas outras abas
     const tabParam = document.getElementById('tab-parametros');
     if(tabParam) tabParam.style.display = '';
-    // habilita apenas os campos p-* da aba parâmetros
     const paramInputs = document.querySelectorAll('#pane-parametros input');
     paramInputs.forEach(el=>{ el.disabled = false; el.style.background = '#fffdf9'; el.style.cursor = ''; });
     const btnSalvar = document.getElementById('btn-salvar-params');
     if(btnSalvar) btnSalvar.disabled = false;
-    const btnAddEmail = document.getElementById('btn-add-email');
-    if(btnAddEmail) btnAddEmail.disabled = false;
+    const btnAdd = document.getElementById('btn-add-email');
+    if(btnAdd) btnAdd.disabled = false;
+    const btnAddComum = document.getElementById('btn-add-email-comum');
+    if(btnAddComum) btnAddComum.disabled = false;
     renderAbaParametros();
     document.querySelector('nav.tabs button[data-tab="parametros"]').click();
-    toast('✅ Acesso administrativo liberado. Cadastre os e-mails autorizados e salve.');
+    toast('✅ Acesso administrativo liberado. Cadastre os e-mails e salve.');
   } else {
     toast('❌ Senha incorreta.');
   }
