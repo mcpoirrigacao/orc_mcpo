@@ -1152,35 +1152,26 @@ function spPath(filename){
   return `/${SP_BIBLIOTECA}/${SP_PASTA}/${filename}`;
 }
 
-// Resolve o site ID dinamicamente (formato correto para Graph API)
+// Resolve o site ID — apenas para admin
 let _spSiteId = null;
 async function getSiteId(){
   if(_spSiteId) return _spSiteId;
   const token = await getGraphToken();
-  if(!token){ console.error('getSiteId: sem token — escopos insuficientes?'); return null; }
+  if(!token) return null;
   try{
     const url = `https://graph.microsoft.com/v1.0/sites/${SP_HOSTNAME}:${SP_SITE_PATH}`;
-    console.log('getSiteId: chamando', url);
     const r = await fetch(url, { headers:{ Authorization: 'Bearer ' + token } });
     const text = await r.text();
-    console.log('getSiteId: status', r.status, text.slice(0, 500));
-    if(!r.ok){
-      // Erro 403 = permissão negada para este usuário
-      if(r.status === 403){
-        console.error('getSiteId: 403 Forbidden — usuário não tem Sites.ReadWrite.All. Verifique o admin consent no Azure.');
-      }
-      return null;
-    }
+    if(!r.ok){ console.warn('getSiteId:', r.status, text.slice(0,200)); return null; }
     const data = JSON.parse(text);
     _spSiteId = data.id;
-    console.log('✅ getSiteId resolvido:', _spSiteId);
     return _spSiteId;
-  }catch(e){ console.error('getSiteId exception:', e); return null; }
+  }catch(e){ console.error('getSiteId:', e); return null; }
 }
 
 async function spDriveUrl(filePath){
   const siteId = await getSiteId();
-  if(!siteId){ console.error('spDriveUrl: siteId null para', filePath); return null; }
+  if(!siteId) return null;
   return `https://graph.microsoft.com/v1.0/sites/${siteId}/drive/root:${spEncodePath(filePath)}`;
 }
 
@@ -1204,7 +1195,10 @@ async function initMsal(){
     msalInstance = new MsalClass(MSAL_CONFIG);
     await msalInstance.initialize();
     const accounts = msalInstance.getAllAccounts();
-    if(accounts.length){ msAccount = accounts[0]; }
+    if(accounts.length){
+      msAccount = accounts[0];
+      resetarTimerInatividade();
+    }
     updateLoginUI();
   }catch(e){
     console.error('MSAL init error:', e);
@@ -1259,6 +1253,7 @@ document.getElementById('btn-ms-login').addEventListener('click', async ()=>{
     const resp = await msalInstance.loginPopup({ scopes: GRAPH_SCOPES });
     msAccount = resp.account;
     updateLoginUI();
+    resetarTimerInatividade();
     toast('Logado como ' + msAccount.username);
   }catch(e){
     console.error('Login error:', e);
@@ -1365,7 +1360,6 @@ async function loadHistoricoDeEmail(email){
   }catch(e){ return []; }
 }
 
-// Lista todos os arquivos de histórico na pasta
 async function listarArquivosHistorico(){
   const token = await getGraphToken();
   if(!token) return [];
@@ -1385,7 +1379,6 @@ async function loadHistorico(){
   if(msAccount){
     const nivel = nivelAcesso();
     if(nivel === 'admin'){
-      // Admin: lê todos os arquivos de histórico da pasta
       try{
         const arquivos = await listarArquivosHistorico();
         if(!arquivos.length) return [];
@@ -1401,11 +1394,9 @@ async function loadHistorico(){
         return todos.flat();
       }catch(e){ console.warn('loadHistorico admin error:', e); return []; }
     } else {
-      // Usuário comum: lê apenas seu próprio arquivo
       return await loadHistoricoDeEmail(emailUsuarioAtual());
     }
   }
-  // --- localStorage fallback ---
   try{ const r = localStorage.getItem(HIST_KEY_LOCAL); return r ? JSON.parse(r) : []; }
   catch(e){ return []; }
 }
@@ -1415,10 +1406,7 @@ async function saveHistorico(list){
   if(msAccount){
     await ensureFolder();
     const filename = emailParaFilename(emailUsuarioAtual());
-    console.log('saveHistorico: gravando arquivo', filename);
-    const ok = await graphPut(spPath(filename), new TextEncoder().encode(json));
-    console.log('saveHistorico: resultado', ok ? '✅ OK' : '❌ FALHOU');
-    return ok;
+    return await graphPut(spPath(filename), new TextEncoder().encode(json));
   }
   try{ localStorage.setItem(HIST_KEY_LOCAL, json); return true; }
   catch(e){ return false; }
@@ -1496,8 +1484,10 @@ async function renderHistorico(filtro=''){
       const item = _histCache.find(x=>x.id===btn.dataset.open);
       if(item){
         state = JSON.parse(JSON.stringify(item.data));
+        state._histId = item.id; // guarda o ID para sobrescrever ao salvar
+        state._histSavedBy = item.savedBy; // mantém o autor original
         renderAll();
-        toast('Obra carregada');
+        toast('Obra carregada — ao salvar, irá sobrescrever este registro.');
         document.querySelector('nav.tabs button[data-tab="obra"]').click();
       }
     });
@@ -1540,22 +1530,41 @@ document.getElementById('hist-busca').addEventListener('input', e=>{
 
 document.getElementById('btn-save-hist').addEventListener('click', async ()=>{
   const r = LAST || compute();
-  // Carrega apenas o arquivo do usuário atual (não todos)
   const list = msAccount
     ? await loadHistoricoDeEmail(emailUsuarioAtual())
     : (()=>{ try{ const x=localStorage.getItem(HIST_KEY_LOCAL); return x?JSON.parse(x):[]; }catch(e){ return []; } })();
   const savedBy = msAccount
     ? { nome: msAccount.name || '', email: msAccount.username || '' }
     : { nome: 'Não identificado', email: '' };
-  list.push({
-    id: 'obra-'+Date.now()+'-'+Math.random().toString(36).slice(2,7),
+
+  const histId = state._histId || null;
+  const novoRegistro = {
+    id: histId || ('obra-'+Date.now()+'-'+Math.random().toString(36).slice(2,7)),
     savedAt: Date.now(),
     savedBy,
     valorFinal: r.valorFinal,
     data: JSON.parse(JSON.stringify(state)),
-  });
+  };
+  // Remover _histId e _histSavedBy do data salvo
+  delete novoRegistro.data._histId;
+  delete novoRegistro.data._histSavedBy;
+
+  if(histId){
+    // Sobrescrever registro existente
+    const idx = list.findIndex(x=>x.id===histId);
+    if(idx >= 0) list[idx] = novoRegistro;
+    else list.push(novoRegistro);
+  } else {
+    list.push(novoRegistro);
+  }
+
   const ok = await saveHistorico(list);
-  toast(ok ? 'Obra salva por ' + savedBy.nome + '!' : 'Não foi possível salvar agora.');
+  if(ok){
+    state._histId = novoRegistro.id; // atualiza referência para próximas edições
+    toast(histId ? 'Obra atualizada!' : 'Obra salva por ' + savedBy.nome + '!');
+  } else {
+    toast('Não foi possível salvar agora.');
+  }
 });
 
 document.querySelector('nav.tabs button[data-tab="historico"]').addEventListener('click', ()=>renderHistorico());
@@ -2293,6 +2302,44 @@ document.querySelector('.brand-mark').addEventListener('click', ()=>{
     cliquesLogo = 0;
     tentarAcessoAdmin();
   }
+});
+
+/* ============================================================
+   LOGOUT POR INATIVIDADE — 1 hora sem interação
+   ============================================================ */
+const INATIVIDADE_MS = 60 * 60 * 1000; // 1 hora
+let _timerInatividade = null;
+let _avisoInatividade = null;
+
+function resetarTimerInatividade(){
+  clearTimeout(_timerInatividade);
+  clearTimeout(_avisoInatividade);
+  if(!msAccount) return;
+
+  // Aviso 5 minutos antes
+  _avisoInatividade = setTimeout(()=>{
+    toast('⚠️ Você será deslogado em 5 minutos por inatividade.');
+  }, INATIVIDADE_MS - 5 * 60 * 1000);
+
+  // Logout após 1 hora
+  _timerInatividade = setTimeout(async ()=>{
+    if(!msalInstance || !msAccount) return;
+    toast('Sessão encerrada por inatividade.');
+    await new Promise(r=>setTimeout(r, 1500));
+    try{
+      await msalInstance.logoutPopup({ account: msAccount });
+    }catch(e){
+      // Se popup falhar, limpa manualmente
+      msAccount = null;
+    }
+    msAccount = null;
+    updateLoginUI();
+  }, INATIVIDADE_MS);
+}
+
+// Reinicia o timer em qualquer interação do usuário
+['mousemove','mousedown','keydown','touchstart','scroll','click'].forEach(ev=>{
+  document.addEventListener(ev, resetarTimerInatividade, { passive: true });
 });
 
 // Botão de login no overlay inicial
