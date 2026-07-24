@@ -241,7 +241,7 @@
     <span class="brand-sub">Montagem de Pivôs de Irrigação</span>
     <div style="margin-left:auto;">
       <button id="btn-ms-login" class="btn" style="background:rgba(255,255,255,.15);color:#fff;border:1px solid rgba(255,255,255,.3);font-size:.75rem;padding:6px 12px;" type="button">
-        <span id="ms-login-label">🔑 Entrar com Microsoft</span>
+        <span id="ms-login-label">⏳ Inicializando...</span>
       </button>
       <div id="ms-user-info" style="display:none;font-size:.72rem;color:#a9c8cf;margin-top:3px;text-align:right;"></div>
     </div>
@@ -1058,13 +1058,13 @@ async function initMsal(){
   try{
     msalInstance = new msal.PublicClientApplication(MSAL_CONFIG);
     await msalInstance.initialize();
-    // No OneDrive/SharePoint não usamos redirect — apenas popup
-    // Verificar se já há conta em cache
     const accounts = msalInstance.getAllAccounts();
     if(accounts.length){ msAccount = accounts[0]; }
     updateLoginUI();
   }catch(e){
     console.warn('MSAL init error:', e);
+    // mesmo com erro, libera o botão
+    document.getElementById('ms-login-label').textContent = '🔑 Entrar com Microsoft';
     updateLoginUI();
   }
 }
@@ -1086,7 +1086,20 @@ function updateLoginUI(){
 }
 
 document.getElementById('btn-ms-login').addEventListener('click', async ()=>{
-  if(!msalInstance){ toast('Aguarde — inicializando autenticação...'); return; }
+  // Se MSAL ainda não inicializou, aguarda até 5s
+  if(!msalInstance){
+    document.getElementById('ms-login-label').textContent = '⏳ Aguarde...';
+    let tentativas = 0;
+    while(!msalInstance && tentativas < 10){
+      await new Promise(r => setTimeout(r, 500));
+      tentativas++;
+    }
+    if(!msalInstance){
+      toast('Não foi possível inicializar a autenticação. Recarregue a página.');
+      document.getElementById('ms-login-label').textContent = '🔑 Entrar com Microsoft';
+      return;
+    }
+  }
   if(msAccount){
     if(confirm('Deslogar de ' + msAccount.username + '?')){
       await msalInstance.logoutPopup({ account: msAccount });
@@ -1096,19 +1109,24 @@ document.getElementById('btn-ms-login').addEventListener('click', async ()=>{
     return;
   }
   try{
+    document.getElementById('ms-login-label').textContent = '⏳ Abrindo login...';
     const resp = await msalInstance.loginPopup({ scopes: GRAPH_SCOPES });
     msAccount = resp.account;
     updateLoginUI();
     toast('Logado como ' + msAccount.username);
   }catch(e){
     console.error('Login error:', e);
-    if(e.errorCode === 'popup_window_error'){
-      toast('Popup bloqueado — permita popups para este site e tente novamente.');
-    } else if(e.errorCode === 'redirect_uri_mismatch' || (e.message||'').includes('redirect')){
-      toast('URL não registrada no Azure. Adicione esta URL como Redirect URI no portal Azure.');
-      console.error('Redirect URI atual:', window.location.href.split('?')[0].split('#')[0]);
+    document.getElementById('ms-login-label').textContent = '🔑 Entrar com Microsoft';
+    if(e.errorCode === 'popup_window_error' || (e.message||'').includes('popup')){
+      toast('Popup bloqueado — clique no ícone 🚫 na barra do navegador e permita popups para este site.');
+    } else if((e.message||'').includes('redirect') || e.errorCode === 'redirect_uri_mismatch'){
+      toast('Erro de configuração Azure. Verifique se o Redirect URI está cadastrado corretamente.');
+      console.error('redirectUri usado:', getRedirectUri());
+    } else if(e.errorCode === 'user_cancelled'){
+      toast('Login cancelado.');
+      document.getElementById('ms-login-label').textContent = '🔑 Entrar com Microsoft';
     } else {
-      toast('Erro no login: ' + (e.errorCode || e.message || 'desconhecido'));
+      toast('Erro: ' + (e.errorCode || e.message || 'desconhecido'));
     }
   }
 });
