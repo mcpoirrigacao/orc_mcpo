@@ -330,6 +330,7 @@ function loadMsal(){
       <h3>Equipe</h3>
       <div class="grid">
         <div class="field"><label>Qtd. de Equipes</label><input type="number" id="i-qtdequipes" min="1" step="1"></div>
+        <div class="field"><label>Auxiliares Adicionais (pontuais)</label><input type="number" id="i-auxadicionais" min="0" step="1" placeholder="0"></div>
         <div class="field readonly"><label>Qtd. de Pessoas (calculado)</label><input type="text" id="o-qtdpessoas" disabled></div>
         <div class="field"><label>KM Diário (por equipe)</label><input type="number" id="i-kmdiario"></div>
         <div class="field"><label>KM Adicional de Origem</label><input type="number" id="i-kmorigem"></div>
@@ -554,6 +555,21 @@ function loadMsal(){
     </div>
 
     <div class="card">
+      <h3>Composição de Equipe</h3>
+      <div class="grid" style="max-width:560px;">
+        <div class="field">
+          <label>Pessoas por equipe — com auxiliares</label>
+          <input type="number" id="p-fatorcomaux" step="1" min="1">
+        </div>
+        <div class="field">
+          <label>Pessoas por equipe — sem auxiliares</label>
+          <input type="number" id="p-fatorsemaux" step="1" min="1">
+        </div>
+      </div>
+      <div class="note" style="margin-top:8px;">Usado para calcular hospedagem e alimentação: Qtd. Pessoas = Equipes × fator.</div>
+    </div>
+
+    <div class="card">
       <h3>Valores Unitários — Pivôs</h3>
       <div class="grid">
         <div class="field"><label>Hospedagem (R$/dia/pessoa)</label><input type="number" id="p-vhosp" step="0.01"></div>
@@ -561,10 +577,12 @@ function loadMsal(){
         <div class="field"><label>Alimentação (R$/pessoa/dia)</label><input type="number" id="p-valim" step="0.01"></div>
         <div class="field"><label>Trator MCPO (R$/dia)</label><input type="number" id="p-vtrator" step="0.01"></div>
         <div class="field"><label>Hora Técnica (R$/hora)</label><input type="number" id="p-vhora" step="0.01"></div>
+        <div class="field"><label>Hora Auxiliar (R$/hora)</label><input type="number" id="p-vhoraaux" step="0.01"></div>
         <div class="field"><label>Caminhão MCPO (R$/dia)</label><input type="number" id="p-vcaminhao" step="0.01"></div>
         <div class="field"><label>Frete Máquinas (R$/km)</label><input type="number" id="p-vfrete" step="0.01"></div>
         <div class="field"><label>Máquina PEAD (R$/dia)</label><input type="number" id="p-vpead" step="0.01"></div>
         <div class="field"><label>Caminhão Munck (R$/dia)</label><input type="number" id="p-vmunck" step="0.01"></div>
+        <div class="field"><label>Caminhão Munck (R$/mês) — acima de 16 dias</label><input type="number" id="p-vmunckmes" step="0.01"></div>
       </div>
     </div>
 
@@ -669,9 +687,9 @@ const SERVICOS_DEFS = [
 function defaultState(){
   return {
     info:{empresa:'MAQCAMPO IRRIGAÇÃO', cliente:'', obra:'', endereco:'', vendedor:'', responsavel:'', hectares:'', numPivos:0},
-    equipe:{qtdEquipes:0, kmDiario:0, kmOrigem:0, kmLoja:0, adcHr:0, diasTrator:0, diasCaminhao:0, diasMunck:0, casaM2:0, prazoManual:null},
+    equipe:{qtdEquipes:0, auxAdicionais:0, kmDiario:0, kmOrigem:0, kmLoja:0, adcHr:0, diasTrator:0, diasCaminhao:0, diasMunck:0, casaM2:0, prazoManual:null},
     servicos:{trator:false, caminhao:false, freteMcpo:false, munck:false, escavadeira:false, basePivo:false, casaPadrao:false, maquinaPead:false, alimAlmoco:false, alimJantar:false, hospedagem:false, auxiliares:false},
-    precos:{hospedagem:80, km:3.9, refeicao:80, trator:325, horaTecnica:260, caminhao:300, freteKm:8.5, maquinaPead:2500, munck:2500, freteEscavadeiraKm:13, metroEscavadeira:15, basePivo:18000, casaM2:2500, pctMontador:12, pctAuxiliar:3, tubDN350:1.45, tubDN450:1.70, tubDN600:1.80, horaEncargo:260},
+    precos:{hospedagem:80, km:3.9, refeicao:80, trator:325, horaTecnica:260, horaAuxiliar:0, caminhao:300, freteKm:8.5, maquinaPead:2500, munck:2500, munckMes:40000, freteEscavadeiraKm:13, metroEscavadeira:15, basePivo:18000, casaM2:2500, pctMontador:12, pctAuxiliar:3, tubDN350:1.45, tubDN450:1.70, tubDN600:1.80, horaEncargo:260, fatorComAux:5, fatorSemAux:2},
     tasks:{},
     extras:[
       {desc:'Geomembrana', unidade:'m²', qtd:0, valorTotal:0},
@@ -812,6 +830,7 @@ const SIMPLE_BINDINGS = [
   ['i-numpivos','info','numPivos','num'],
 
   ['i-qtdequipes','equipe','qtdEquipes','num'],
+  ['i-auxadicionais','equipe','auxAdicionais','num'],
   ['i-kmdiario','equipe','kmDiario','num'],
   ['i-kmorigem','equipe','kmOrigem','num'],
   ['i-kmloja','equipe','kmLoja','num'],
@@ -919,7 +938,9 @@ function compute(){
 
   // --- Equipe / prazo ---
   const qtdEquipes = Math.max(1, n(state.equipe.qtdEquipes));
-  const qtdPessoas = state.servicos.auxiliares ? qtdEquipes*5 : qtdEquipes*2;
+  const auxAdicionais = n(state.equipe.auxAdicionais) || 0;
+  const pessoasBase = state.servicos.auxiliares ? qtdEquipes*n(state.precos.fatorComAux) : qtdEquipes*n(state.precos.fatorSemAux);
+  const qtdPessoas = pessoasBase + auxAdicionais;
   const diasCorridos = (n(state.equipe.adcHr)+tmoTotal)/8 + (tmoTotal/8*0.3);
   const prazoEstimado = (state.equipe.prazoManual!=null) ? n(state.equipe.prazoManual) : Math.max(1, ceilDiv(diasCorridos, qtdEquipes));
   out.qtdPessoas=qtdPessoas; out.diasCorridos=diasCorridos; out.prazoEstimado=prazoEstimado;
@@ -939,12 +960,14 @@ function compute(){
 
   const tratorTotal = S.trator ? E.diasTrator*P.trator : 0;
   const horaQtd = n(E.adcHr)+tmoTotal;
-  const horaTotal = horaQtd*P.horaTecnica;
+  // Hora auxiliar: (qtdPessoas - 1) × horaAuxiliar × horas totais
+  const custoHoraAux = (qtdPessoas > 1) ? (qtdPessoas - 1) * n(P.horaAuxiliar) * horaQtd : 0;
+  const horaTotal = horaQtd*P.horaTecnica + custoHoraAux;
   const caminhaoTotal = S.caminhao ? E.diasCaminhao*P.caminhao : 0;
   const freteTotal = S.freteMcpo ? E.kmLoja*P.freteKm*2 : 0;
   const peadDias = ceilDiv(qtySoldaPead,10);
   const peadTotal = S.maquinaPead ? peadDias*P.maquinaPead : 0;
-  const munckTotal = S.munck ? (E.diasMunck<17 ? E.diasMunck*P.munck : ceilDiv(E.diasMunck,30)*40000) : 0;
+  const munckTotal = S.munck ? (E.diasMunck<17 ? E.diasMunck*P.munck : ceilDiv(E.diasMunck,30)*P.munckMes) : 0;
 
   const totalPivos = hospTotal+kmTotal+alimTotal+tratorTotal+horaTotal+caminhaoTotal+freteTotal+peadTotal+munckTotal;
 
@@ -2148,9 +2171,9 @@ function renderAbaParametros(){
   const map = {
     'p-vhora-encargo': P.horaEncargo, 'p-pctmontador': P.pctMontador, 'p-pctauxiliar': P.pctAuxiliar,
     'p-tubdn350': P.tubDN350, 'p-tubdn450': P.tubDN450, 'p-tubdn600': P.tubDN600,
-    'p-vhosp': P.hospedagem, 'p-vkm': P.km, 'p-valim': P.refeicao,
-    'p-vtrator': P.trator, 'p-vhora': P.horaTecnica, 'p-vcaminhao': P.caminhao,
-    'p-vfrete': P.freteKm, 'p-vpead': P.maquinaPead, 'p-vmunck': P.munck,
+    'p-fatorcomaux': P.fatorComAux, 'p-fatorsemaux': P.fatorSemAux,
+    'p-vtrator': P.trator, 'p-vhora': P.horaTecnica, 'p-vhoraaux': P.horaAuxiliar, 'p-vcaminhao': P.caminhao,
+    'p-vfrete': P.freteKm, 'p-vpead': P.maquinaPead, 'p-vmunck': P.munck, 'p-vmunckmes': P.munckMes,
     'p-vfesc': P.freteEscavadeiraKm, 'p-vesc': P.metroEscavadeira,
     'p-vbase': P.basePivo, 'p-vcasa': P.casaM2,
     'p-imposto': globalParams.imposto,
@@ -2215,10 +2238,14 @@ document.getElementById('btn-salvar-params').addEventListener('click', async ()=
     refeicao:      lv('p-valim'),
     trator:        lv('p-vtrator'),
     horaTecnica:   lv('p-vhora'),
+    horaAuxiliar:  lv('p-vhoraaux'),
     caminhao:      lv('p-vcaminhao'),
     freteKm:       lv('p-vfrete'),
     maquinaPead:   lv('p-vpead'),
     munck:         lv('p-vmunck'),
+    munckMes:      lv('p-vmunckmes'),
+    fatorComAux:   lv('p-fatorcomaux'),
+    fatorSemAux:   lv('p-fatorsemaux'),
     freteEscavadeiraKm: lv('p-vfesc'),
     metroEscavadeira:   lv('p-vesc'),
     basePivo:      lv('p-vbase'),
