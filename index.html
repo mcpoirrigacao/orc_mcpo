@@ -1274,6 +1274,7 @@ document.getElementById('btn-ms-login').addEventListener('click', async ()=>{
     const resp = await msalInstance.loginPopup({ scopes: GRAPH_SCOPES });
     msAccount = resp.account;
     updateLoginUI();
+    await carregarEAplicarParams();
     toast('Logado como ' + msAccount.username);
   }catch(e){
     console.error('Login error:', e);
@@ -1984,24 +1985,19 @@ async function loadParams(){
   if(msAccount){
     try{
       const token = await getGraphToken();
-      if(!token) return null;
+      if(!token){ console.warn('loadParams: sem token'); return null; }
       const base = await spDriveUrl(spPath(PARAMS_FILENAME));
-      if(!base) return null;
-      // cache-busting: garante que sempre lê a versão mais recente do SharePoint
-      const url = base + ':/content?t=' + Date.now();
-      const r = await fetch(url, {
+      if(!base){ console.warn('loadParams: URL não resolvida'); return null; }
+      const r = await fetch(base + ':/content', {
         headers:{
           Authorization: 'Bearer ' + token,
-          'Cache-Control': 'no-cache, no-store, must-revalidate',
-          'Pragma': 'no-cache'
+          'Cache-Control': 'no-cache'
         },
         cache: 'no-store'
       });
-      if(r.status === 404){ console.warn('parametros.json não existe ainda'); return null; }
-      if(!r.ok){ console.warn('loadParams:', r.status); return null; }
-      const data = JSON.parse(await r.text());
-      console.log('✅ Parâmetros carregados do SharePoint');
-      return data;
+      if(r.status === 404){ console.warn('loadParams: parametros.json ainda não existe'); return null; }
+      if(!r.ok){ console.warn('loadParams: HTTP', r.status, await r.text().catch(()=>'')); return null; }
+      return JSON.parse(await r.text());
     }catch(e){ console.warn('loadParams error:', e); return null; }
   }
   try{ const r = localStorage.getItem(PARAMS_KEY_LOCAL); return r ? JSON.parse(r) : null; }
@@ -2129,6 +2125,17 @@ async function carregarEAplicarParams(){
     if(p.emailsComuns) globalParams.emailsComuns = p.emailsComuns;
     if(p.precos) globalParams.precos = { ...defaultState().precos, ...p.precos };
     if(p.imposto !== undefined) globalParams.imposto = p.imposto;
+    console.log('✅ Parâmetros aplicados:', {
+      horaTecnica: globalParams.precos.horaTecnica,
+      horaAuxiliar: globalParams.precos.horaAuxiliar,
+      munck: globalParams.precos.munck,
+      munckMes: globalParams.precos.munckMes,
+      imposto: globalParams.imposto,
+      admins: globalParams.emailsAutorizados.length,
+      usuarios: globalParams.emailsComuns.length,
+    });
+  } else {
+    console.warn('⚠️ Nenhum parâmetro carregado — usando valores padrão do sistema.');
   }
   aplicarParamsAoState();
   aplicarControleAcesso();
@@ -2188,6 +2195,7 @@ function renderAbaParametros(){
     'p-vhora-encargo': P.horaEncargo, 'p-pctmontador': P.pctMontador, 'p-pctauxiliar': P.pctAuxiliar,
     'p-tubdn350': P.tubDN350, 'p-tubdn450': P.tubDN450, 'p-tubdn600': P.tubDN600,
     'p-fatorcomaux': P.fatorComAux, 'p-fatorsemaux': P.fatorSemAux,
+    'p-vhosp': P.hospedagem, 'p-vkm': P.km, 'p-valim': P.refeicao,
     'p-vtrator': P.trator, 'p-vhora': P.horaTecnica, 'p-vhoraaux': P.horaAuxiliar, 'p-vcaminhao': P.caminhao,
     'p-vfrete': P.freteKm, 'p-vpead': P.maquinaPead, 'p-vmunck': P.munck, 'p-vmunckmes': P.munckMes,
     'p-vfesc': P.freteEscavadeiraKm, 'p-vesc': P.metroEscavadeira,
@@ -2240,34 +2248,42 @@ document.getElementById('inp-novo-email-comum').addEventListener('keydown', e=>{
 // Botão salvar parâmetros
 document.getElementById('btn-salvar-params').addEventListener('click', async ()=>{
   // ler valores da aba parâmetros
-  const lv = id => n(document.getElementById(id)?.value);
+  // lv: lê o campo; se estiver vazio/ausente, mantém o valor atual salvo (nunca zera por engano)
+  const lv = (id, atual) => {
+    const el = document.getElementById(id);
+    if(!el || el.value === '' || el.value === null || el.value === undefined){
+      return (atual !== undefined && atual !== null) ? atual : 0;
+    }
+    return n(el.value);
+  };
+  const PA = globalParams.precos;
   globalParams.precos = {
     ...globalParams.precos,
-    horaEncargo:   lv('p-vhora-encargo'),
-    pctMontador:   lv('p-pctmontador'),
-    pctAuxiliar:   lv('p-pctauxiliar'),
-    tubDN350:      lv('p-tubdn350'),
-    tubDN450:      lv('p-tubdn450'),
-    tubDN600:      lv('p-tubdn600'),
-    hospedagem:    lv('p-vhosp'),
-    km:            lv('p-vkm'),
-    refeicao:      lv('p-valim'),
-    trator:        lv('p-vtrator'),
-    horaTecnica:   lv('p-vhora'),
-    horaAuxiliar:  lv('p-vhoraaux'),
-    caminhao:      lv('p-vcaminhao'),
-    freteKm:       lv('p-vfrete'),
-    maquinaPead:   lv('p-vpead'),
-    munck:         lv('p-vmunck'),
-    munckMes:      lv('p-vmunckmes'),
-    fatorComAux:   lv('p-fatorcomaux'),
-    fatorSemAux:   lv('p-fatorsemaux'),
-    freteEscavadeiraKm: lv('p-vfesc'),
-    metroEscavadeira:   lv('p-vesc'),
-    basePivo:      lv('p-vbase'),
-    casaM2:        lv('p-vcasa'),
+    horaEncargo:   lv('p-vhora-encargo', PA.horaEncargo),
+    pctMontador:   lv('p-pctmontador', PA.pctMontador),
+    pctAuxiliar:   lv('p-pctauxiliar', PA.pctAuxiliar),
+    tubDN350:      lv('p-tubdn350', PA.tubDN350),
+    tubDN450:      lv('p-tubdn450', PA.tubDN450),
+    tubDN600:      lv('p-tubdn600', PA.tubDN600),
+    hospedagem:    lv('p-vhosp', PA.hospedagem),
+    km:            lv('p-vkm', PA.km),
+    refeicao:      lv('p-valim', PA.refeicao),
+    trator:        lv('p-vtrator', PA.trator),
+    horaTecnica:   lv('p-vhora', PA.horaTecnica),
+    horaAuxiliar:  lv('p-vhoraaux', PA.horaAuxiliar),
+    caminhao:      lv('p-vcaminhao', PA.caminhao),
+    freteKm:       lv('p-vfrete', PA.freteKm),
+    maquinaPead:   lv('p-vpead', PA.maquinaPead),
+    munck:         lv('p-vmunck', PA.munck),
+    munckMes:      lv('p-vmunckmes', PA.munckMes),
+    fatorComAux:   lv('p-fatorcomaux', PA.fatorComAux),
+    fatorSemAux:   lv('p-fatorsemaux', PA.fatorSemAux),
+    freteEscavadeiraKm: lv('p-vfesc', PA.freteEscavadeiraKm),
+    metroEscavadeira:   lv('p-vesc', PA.metroEscavadeira),
+    basePivo:      lv('p-vbase', PA.basePivo),
+    casaM2:        lv('p-vcasa', PA.casaM2),
   };
-  globalParams.imposto = lv('p-imposto');
+  globalParams.imposto = lv('p-imposto', globalParams.imposto);
 
   const ok = await saveParams(globalParams);
   if(ok){
@@ -2279,11 +2295,11 @@ document.getElementById('btn-salvar-params').addEventListener('click', async ()=
   }
 });
 
-// Carregar parâmetros quando o login for concluído
+// Atualiza apenas o e-mail exibido; o carregamento de parâmetros é feito
+// explicitamente após o login/init (evita race condition entre chamadas)
 const _origUpdateLoginUI = updateLoginUI;
 window.updateLoginUI = function(){
   _origUpdateLoginUI();
-  carregarEAplicarParams();
   const elEmail = document.getElementById('email-atual-logado');
   if(elEmail) elEmail.textContent = emailUsuarioAtual() || '(não logado)';
 };
