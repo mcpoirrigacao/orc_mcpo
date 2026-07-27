@@ -364,7 +364,7 @@ function loadMsal(){
         <div class="costline"><div class="lbl">KM Translado <span class="sub">carros/dia/obra</span></div><div id="pv-km-qtd" class="out"></div><div><input type="number" id="i-vkm"></div><div class="out" id="pv-km-total"></div></div>
         <div class="costline"><div class="lbl">Alimentação <span class="sub">almoço/jantar</span></div><div id="pv-alim-qtd" class="out"></div><div><input type="number" id="i-valim"></div><div class="out" id="pv-alim-total"></div></div>
         <div class="costline"><div class="lbl">Trator MCPO</div><div id="pv-trator-qtd" class="out"></div><div><input type="number" id="i-vtrator"></div><div class="out" id="pv-trator-total"></div></div>
-        <div class="costline"><div class="lbl">Hora Técnica</div><div id="pv-hora-qtd" class="out"></div><div><input type="number" id="i-vhora"></div><div class="out" id="pv-hora-total"></div></div>
+        <div class="costline"><div class="lbl">Hora Técnica <span class="sub">valor/hora combinado</span></div><div id="pv-hora-qtd" class="out"></div><div><input type="text" id="i-vhora" disabled style="background:var(--areia-escura);color:var(--texto-suave);width:100%;padding:6px 7px;border:1px solid var(--borda);border-radius:4px;text-align:right;font-family:var(--fonte-dado);font-size:.82rem;" title="R$/hora Técnica + (Pessoas-1) × R$/hora Auxiliar"></div><div class="out" id="pv-hora-total"></div></div>
         <div class="costline"><div class="lbl">Caminhão MCPO</div><div id="pv-caminhao-qtd" class="out"></div><div><input type="number" id="i-vcaminhao"></div><div class="out" id="pv-caminhao-total"></div></div>
         <div class="costline"><div class="lbl">Frete Máquinas MCPO</div><div id="pv-frete-qtd" class="out"></div><div><input type="number" id="i-vfrete"></div><div class="out" id="pv-frete-total"></div></div>
         <div class="costline"><div class="lbl">Máquina PEAD <span class="sub">soldas/10 por dia</span></div><div id="pv-pead-qtd" class="out"></div><div><input type="number" id="i-vpead"></div><div class="out" id="pv-pead-total"></div></div>
@@ -845,7 +845,6 @@ const SIMPLE_BINDINGS = [
   ['i-vkm','precos','km','num'],
   ['i-valim','precos','refeicao','num'],
   ['i-vtrator','precos','trator','num'],
-  ['i-vhora','precos','horaTecnica','num'],
   ['i-vcaminhao','precos','caminhao','num'],
   ['i-vfrete','precos','freteKm','num'],
   ['i-vpead','precos','maquinaPead','num'],
@@ -960,8 +959,8 @@ function compute(){
 
   const tratorTotal = S.trator ? E.diasTrator*P.trator : 0;
   const horaQtd = n(E.adcHr)+tmoTotal;
-  // Hora auxiliar: (qtdPessoas - 1) × horaAuxiliar × horas totais
   const custoHoraAux = (qtdPessoas > 1) ? (qtdPessoas - 1) * n(P.horaAuxiliar) * horaQtd : 0;
+  const horaUnit = n(P.horaTecnica) + (qtdPessoas > 1 ? (qtdPessoas - 1) * n(P.horaAuxiliar) : 0);
   const horaTotal = horaQtd*P.horaTecnica + custoHoraAux;
   const caminhaoTotal = S.caminhao ? E.diasCaminhao*P.caminhao : 0;
   const freteTotal = S.freteMcpo ? E.kmLoja*P.freteKm*2 : 0;
@@ -989,7 +988,7 @@ function compute(){
   const custoTotalObra = somaBruta;
 
   Object.assign(out,{
-    hospQtd,hospTotal,kmQtd,kmTotal,alimQtd,alimTotal,tratorTotal,horaQtd,horaTotal,
+    hospQtd,hospTotal,kmQtd,kmTotal,alimQtd,alimTotal,tratorTotal,horaQtd,horaUnit,horaTotal,
     caminhaoTotal,freteTotal,peadDias,peadTotal,munckTotal,totalPivos,
     fEscTotal,escTotal,totalAdutora,baseTotal,casaTotal,totalInfra,totalExtras,
     custoTotalObra
@@ -1043,7 +1042,9 @@ function recalc(){
   setText('pv-km-qtd', num2(r.kmQtd)); setText('pv-km-total', brl(r.kmTotal));
   setText('pv-alim-qtd', num2(r.alimQtd)); setText('pv-alim-total', brl(r.alimTotal));
   setText('pv-trator-qtd', num2(state.equipe.diasTrator)); setText('pv-trator-total', brl(r.tratorTotal));
-  setText('pv-hora-qtd', num2(r.horaQtd)); setText('pv-hora-total', brl(r.horaTotal));
+  setText('pv-hora-qtd', num2(r.horaQtd));
+  setVal('i-vhora', brl(r.horaUnit) + ' / hora');
+  setText('pv-hora-total', brl(r.horaTotal));
   setText('pv-caminhao-qtd', num2(state.equipe.diasCaminhao)); setText('pv-caminhao-total', brl(r.caminhaoTotal));
   setText('pv-frete-qtd', num2(state.equipe.kmLoja)); setText('pv-frete-total', brl(r.freteTotal));
   setText('pv-pead-qtd', num2(r.peadDias)); setText('pv-pead-total', brl(r.peadTotal));
@@ -1976,7 +1977,7 @@ const PARAMS_KEY_LOCAL = 'mcpo-params';
 // IDs dos campos bloqueados — agora existem SOMENTE na aba Parâmetros (p-*)
 // Os campos nas outras abas são readonly quando o usuário não é autorizado
 const PARAM_FIELD_IDS = [
-  'i-vhosp','i-vkm','i-valim','i-vtrator','i-vhora','i-vcaminhao',
+  'i-vhosp','i-vkm','i-valim','i-vtrator','i-vcaminhao',
   'i-vfrete','i-vpead','i-vmunck','i-vfesc','i-vesc','i-vbase','i-vcasa',
   'i-imposto',
 ];
