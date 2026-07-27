@@ -1219,10 +1219,7 @@ async function initMsal(){
     msalInstance = new MsalClass(MSAL_CONFIG);
     await msalInstance.initialize();
     const accounts = msalInstance.getAllAccounts();
-    if(accounts.length){
-      msAccount = accounts[0];
-      resetarTimerInatividade();
-    }
+    if(accounts.length){ msAccount = accounts[0]; }
     updateLoginUI();
   }catch(e){
     console.error('MSAL init error:', e);
@@ -1277,7 +1274,6 @@ document.getElementById('btn-ms-login').addEventListener('click', async ()=>{
     const resp = await msalInstance.loginPopup({ scopes: GRAPH_SCOPES });
     msAccount = resp.account;
     updateLoginUI();
-    resetarTimerInatividade();
     toast('Logado como ' + msAccount.username);
   }catch(e){
     console.error('Login error:', e);
@@ -2048,7 +2044,8 @@ function aplicarControleAcesso(){
     return;
   }
   overlayLogin.style.display = 'none';
-  document.querySelectorAll('nav.tabs button').forEach(b=>b.disabled=false);
+  // Habilita abas normais — aba parâmetros tratada separadamente abaixo
+  document.querySelectorAll('nav.tabs button:not(#tab-parametros)').forEach(b=>b.disabled=false);
 
   // 2 — Logado mas bloqueado
   if(nivel === 'bloqueado'){
@@ -2060,18 +2057,23 @@ function aplicarControleAcesso(){
 
   // Aba parâmetros: SOMENTE admin — nunca comum, nunca deslogado
   const tabParam = document.getElementById('tab-parametros');
-  if(tabParam) tabParam.style.display = nivel === 'admin' ? '' : 'none';
+  if(tabParam){
+    const isAdmin = nivel === 'admin';
+    tabParam.style.display = isAdmin ? '' : 'none';
+    tabParam.disabled = !isAdmin;
+    tabParam.onclick = isAdmin ? null : (e)=>{
+      e.preventDefault(); e.stopPropagation();
+      toast('Acesso restrito a administradores.');
+      return false;
+    };
+  }
 
-  // Garantia extra: se aba parâmetros estiver ativa e usuário não for admin, redireciona
+  // Se não-admin estiver na aba parâmetros, redireciona para obra
   if(nivel !== 'admin'){
     const paneParam = document.getElementById('pane-parametros');
     if(paneParam && paneParam.classList.contains('active')){
       document.querySelector('nav.tabs button[data-tab="obra"]').click();
     }
-    // Bloquear clique direto na aba mesmo se visível por bug
-    if(tabParam) tabParam.onclick = (e)=>{ e.preventDefault(); e.stopPropagation(); toast('Acesso restrito a administradores.'); return false; };
-  } else {
-    if(tabParam) tabParam.onclick = null;
   }
 
   // 4 — Campos de parâmetro nas abas normais — sempre bloqueados para todos
@@ -2295,7 +2297,7 @@ function tentarAcessoAdmin(){
   if(senha === null) return;
   if(senha === SENHA_ADMIN){
     const tabParam = document.getElementById('tab-parametros');
-    if(tabParam) tabParam.style.display = '';
+    if(tabParam){ tabParam.style.display = ''; tabParam.disabled = false; tabParam.onclick = null; }
     const paramInputs = document.querySelectorAll('#pane-parametros input');
     paramInputs.forEach(el=>{ el.disabled = false; el.style.background = '#fffdf9'; el.style.cursor = ''; });
     const btnSalvar = document.getElementById('btn-salvar-params');
@@ -2330,44 +2332,6 @@ document.querySelector('.brand-mark').addEventListener('click', ()=>{
     cliquesLogo = 0;
     tentarAcessoAdmin();
   }
-});
-
-/* ============================================================
-   LOGOUT POR INATIVIDADE — 1 hora sem interação
-   ============================================================ */
-const INATIVIDADE_MS = 60 * 60 * 1000; // 1 hora
-let _timerInatividade = null;
-let _avisoInatividade = null;
-
-function resetarTimerInatividade(){
-  clearTimeout(_timerInatividade);
-  clearTimeout(_avisoInatividade);
-  if(!msAccount) return;
-
-  // Aviso 5 minutos antes
-  _avisoInatividade = setTimeout(()=>{
-    toast('⚠️ Você será deslogado em 5 minutos por inatividade.');
-  }, INATIVIDADE_MS - 5 * 60 * 1000);
-
-  // Logout após 1 hora
-  _timerInatividade = setTimeout(async ()=>{
-    if(!msalInstance || !msAccount) return;
-    toast('Sessão encerrada por inatividade.');
-    await new Promise(r=>setTimeout(r, 1500));
-    try{
-      await msalInstance.logoutPopup({ account: msAccount });
-    }catch(e){
-      // Se popup falhar, limpa manualmente
-      msAccount = null;
-    }
-    msAccount = null;
-    updateLoginUI();
-  }, INATIVIDADE_MS);
-}
-
-// Reinicia o timer em qualquer interação do usuário
-['mousemove','mousedown','keydown','touchstart','scroll','click'].forEach(ev=>{
-  document.addEventListener(ev, resetarTimerInatividade, { passive: true });
 });
 
 // Botão de login no overlay inicial
