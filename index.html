@@ -1335,7 +1335,11 @@ async function graphPut(filePath, body){
   return r.ok;
 }
 
+// Cache de sessão: pastas verificadas apenas uma vez por carregamento da página
+let _pastasVerificadas = false;
+
 async function ensureFolder(){
+  if(_pastasVerificadas) return true; // já verificado nesta sessão — zero requisições
   const token = await getGraphToken();
   if(!token) return false;
   const pastas = [
@@ -1345,12 +1349,19 @@ async function ensureFolder(){
   for(const { pai, nome } of pastas){
     const base = await spDriveUrl(pai);
     if(!base) continue;
-    await fetch(base + ':/children', {
-      method: 'POST',
-      headers:{ Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: nome, folder:{}, '@microsoft.graph.conflictBehavior':'fail' })
-    });
+    try{
+      const r = await fetch(base + ':/children', {
+        method: 'POST',
+        headers:{ Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: nome, folder:{}, '@microsoft.graph.conflictBehavior':'fail' })
+      });
+      // 409 = pasta já existe (esperado); 201 = criada agora. Ambos são sucesso.
+      if(!r.ok && r.status !== 409){
+        console.warn('ensureFolder:', nome, r.status);
+      }
+    }catch(e){ /* rede indisponível — o PUT seguinte reportará se falhar */ }
   }
+  _pastasVerificadas = true;
   return true;
 }
 
