@@ -1504,8 +1504,11 @@ async function renderHistorico(filtro=''){
       const item = _histCache.find(x=>x.id===btn.dataset.open);
       if(item){
         state = JSON.parse(JSON.stringify(item.data));
-        state._histId = item.id; // guarda o ID para sobrescrever ao salvar
-        state._histSavedBy = item.savedBy; // mantém o autor original
+        state._histId = item.id;
+        state._histSavedBy = item.savedBy;
+        // Parâmetros globais sempre prevalecem sobre os salvos na obra
+        Object.assign(state.precos, globalParams.precos);
+        state.financeiro.imposto = globalParams.imposto;
         renderAll();
         toast('Obra carregada — ao salvar, irá sobrescrever este registro.');
         document.querySelector('nav.tabs button[data-tab="obra"]').click();
@@ -1963,7 +1966,6 @@ function renderAll(){
   recalc();
 }
 renderAll();
-initMsal();
 
 /* ============================================================
    PARÂMETROS — armazenados no OneDrive / localStorage
@@ -1985,11 +1987,22 @@ async function loadParams(){
       if(!token) return null;
       const base = await spDriveUrl(spPath(PARAMS_FILENAME));
       if(!base) return null;
-      const r = await fetch(base + ':/content', { headers:{ Authorization: 'Bearer ' + token } });
-      if(r.status === 404) return null;
-      if(!r.ok) return null;
-      return JSON.parse(await r.text());
-    }catch(e){ return null; }
+      // cache-busting: garante que sempre lê a versão mais recente do SharePoint
+      const url = base + ':/content?t=' + Date.now();
+      const r = await fetch(url, {
+        headers:{
+          Authorization: 'Bearer ' + token,
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache'
+        },
+        cache: 'no-store'
+      });
+      if(r.status === 404){ console.warn('parametros.json não existe ainda'); return null; }
+      if(!r.ok){ console.warn('loadParams:', r.status); return null; }
+      const data = JSON.parse(await r.text());
+      console.log('✅ Parâmetros carregados do SharePoint');
+      return data;
+    }catch(e){ console.warn('loadParams error:', e); return null; }
   }
   try{ const r = localStorage.getItem(PARAMS_KEY_LOCAL); return r ? JSON.parse(r) : null; }
   catch(e){ return null; }
@@ -2342,6 +2355,17 @@ document.getElementById('btn-login-overlay').addEventListener('click', ()=>{
 // Mostrar overlay de login imediatamente — bloqueia tudo até MSAL inicializar e confirmar sessão
 document.getElementById('overlay-login').style.display = 'flex';
 document.querySelectorAll('nav.tabs button').forEach(b=>b.disabled=true);
+
+/* ============================================================
+   INICIALIZAÇÃO — sempre carrega parâmetros do SharePoint
+   ============================================================ */
+(async function init(){
+  await initMsal();
+  // Após confirmar sessão, sempre lê os parâmetros mais recentes da pasta compartilhada
+  if(msAccount){
+    await carregarEAplicarParams();
+  }
+})();
 </script>
 </body>
 </html>
