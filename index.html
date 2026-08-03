@@ -208,6 +208,9 @@ function loadMsal(){
   .costline .col-label:first-child{text-align:left;}
   .costline.head{font-size:.65rem;text-transform:uppercase;color:var(--texto-suave);border-bottom:2px solid var(--azul-escuro);letter-spacing:.4px;font-weight:700;padding:6px 10px;}
 
+  /* elementos financeiros de mão de obra — visíveis somente para admin */
+  body:not(.is-admin) .somente-admin{display:none !important;}
+
   .proposta-doc{background:#fff;border:1px solid var(--borda);border-radius:8px;padding:26px;font-size:.9rem;}
   .proposta-doc h1{font-family:var(--fonte-titulo);color:var(--azul-escuro);font-size:1.4rem;margin:0 0 2px;}
   .proposta-doc .subhead{color:var(--texto-suave);font-size:.78rem;margin-bottom:18px;}
@@ -307,9 +310,9 @@ function loadMsal(){
 
     <div class="totals-strip">
       <div class="total-box"><div class="label">TMO Total (horas)</div><div class="value" id="out-tmo">0</div></div>
-      <div class="total-box"><div class="label">Pagamento Montador</div><div class="value sm" id="out-labormont">R$ 0</div></div>
-      <div class="total-box"><div class="label">Pagamento Auxiliar</div><div class="value sm" id="out-laboraux">R$ 0</div></div>
-      <div class="total-box accent"><div class="label">Encargos Time (total mão de obra)</div><div class="value sm" id="out-encargos">R$ 0</div></div>
+      <div class="total-box somente-admin"><div class="label">Pagamento Montador</div><div class="value sm" id="out-labormont">R$ 0</div></div>
+      <div class="total-box somente-admin"><div class="label">Pagamento Auxiliar</div><div class="value sm" id="out-laboraux">R$ 0</div></div>
+      <div class="total-box accent somente-admin"><div class="label">Encargos Time (total mão de obra)</div><div class="value sm" id="out-encargos">R$ 0</div></div>
     </div>
     <!-- campos ocultos mantidos para binding -->
     <input type="hidden" id="i-vhora-encargo">
@@ -400,7 +403,7 @@ function loadMsal(){
       </div>
     </div>
 
-    <div class="card">
+    <div class="card somente-admin">
       <h3>Encargos de Time (mão de obra)</h3>
       <p class="pane-desc" style="margin-bottom:6px;">Vem automaticamente do total pago a montadores e auxiliares na aba Tarefas de Montagem.</p>
       <div class="totals-strip">
@@ -410,9 +413,13 @@ function loadMsal(){
 
     <div class="card">
       <h3>Margem de Lucro</h3>
-      <div class="grid">
-        <div class="field"><label>Margem de Lucro Desejada (%)</label><input type="number" id="i-margem" step="0.1"></div>
+      <div class="grid" style="max-width:400px;">
+        <div class="field">
+          <label>Margem de Lucro Desejada (%)</label>
+          <input type="number" id="i-margem" step="0.1">
+        </div>
       </div>
+      <div class="note" style="margin-top:8px;">Margem mínima permitida: <strong id="aviso-margem-min">—</strong>. Valores abaixo do piso são ajustados automaticamente.</div>
     </div>
 
     <div class="totals-strip">
@@ -598,9 +605,12 @@ function loadMsal(){
 
     <div class="card">
       <h3>Precificação</h3>
-      <div class="grid" style="max-width:400px;">
+      <div class="grid" style="max-width:640px;">
         <div class="field"><label>Imposto (%)</label><input type="number" id="p-imposto" step="0.01"></div>
+        <div class="field"><label>Margem de Lucro Padrão (%)</label><input type="number" id="p-margempadrao" step="0.1"></div>
+        <div class="field"><label>Margem Mínima Permitida (%)</label><input type="number" id="p-margemminima" step="0.1"></div>
       </div>
+      <div class="note" style="margin-top:8px;">A <strong>margem padrão</strong> é aplicada automaticamente a cada nova obra. O vendedor pode aumentá-la, mas nunca reduzir abaixo da <strong>margem mínima</strong>.</div>
     </div>
 
     <div style="display:flex;gap:10px;margin-top:6px;">
@@ -697,7 +707,7 @@ function defaultState(){
       {desc:'Técnico de Segurança', unidade:'mensal', qtd:0, valorTotal:0},
       {desc:'Insumos Adicionais', unidade:'un', qtd:0, valorTotal:0},
     ],
-    financeiro:{desconto:0, imposto:22.15, margem:0, valorFinalManual:null},
+    financeiro:{desconto:0, imposto:22.15, margem:20, margemMinima:15, valorFinalManual:null},
     observacoes:'',
   };
 }
@@ -743,7 +753,7 @@ function renderTasks(){
     const tw=document.createElement('div'); tw.className='tablewrap';
     const table=document.createElement('table'); table.className='tasktable';
     table.innerHTML=`<thead><tr>
-      <th>Serviço</th><th>Tipo</th><th>Horas/un.</th><th>${groups[g][0].tipo==='fix'?'Metros':'Qtd.'}</th><th>Horas Total</th><th>Valor Mont.</th><th>Valor Aux.</th>
+      <th>Serviço</th><th>Tipo</th><th>Horas/un.</th><th>${groups[g][0].tipo==='fix'?'Metros':'Qtd.'}</th><th>Horas Total</th><th class="somente-admin">Valor Mont.</th><th class="somente-admin">Valor Aux.</th>
     </tr></thead><tbody></tbody>`;
     const tbody=table.querySelector('tbody');
     groups[g].forEach(t=>{
@@ -754,8 +764,8 @@ function renderTasks(){
         <td>${t.horas}</td>
         <td><input type="number" min="0" step="0.01" data-task="${t.id}" value="${state.tasks[t.id]||0}"></td>
         <td class="out" id="th-${t.id}">0</td>
-        <td class="out" id="tm-${t.id}">R$ 0</td>
-        <td class="out" id="ta-${t.id}">R$ 0</td>`;
+        <td class="out somente-admin" id="tm-${t.id}">R$ 0</td>
+        <td class="out somente-admin" id="ta-${t.id}">R$ 0</td>`;
       tbody.appendChild(tr);
     });
     tw.appendChild(table);
@@ -879,6 +889,21 @@ function bindSimpleInputs(){
       if(group==='_root') renderProposta(); else recalc();
     });
   });
+
+  // Margem: aplica o piso ao sair do campo (permite digitar livremente antes)
+  const elMargem = document.getElementById('i-margem');
+  if(elMargem && !elMargem._pisoLigado){
+    elMargem._pisoLigado = true;
+    elMargem.addEventListener('blur', ()=>{
+      const min = n(globalParams.margemMinima);
+      if(n(state.financeiro.margem) < min){
+        state.financeiro.margem = min;
+        elMargem.value = min;
+        toast('Margem mínima permitida: ' + num2(min) + '%');
+        recalc();
+      }
+    });
+  }
 }
 
 function fillSimpleInputsFromState(){
@@ -1123,8 +1148,7 @@ function renderProposta(){
         <div class="big">${brl(r.valorFinal)}</div>
       </div>
       <div style="text-align:right;font-size:.8rem;">
-        Desconto: ${num2(state.financeiro.desconto)}%<br>
-        Imposto: ${num2(state.financeiro.imposto)}%
+        ${n(state.financeiro.desconto) > 0 ? 'Desconto: ' + num2(state.financeiro.desconto) + '%' : ''}
       </div>
     </div>
   `;
@@ -1658,24 +1682,34 @@ async function exportarExcel(st, r){
   XLSX.utils.book_append_sheet(wb, ws1, 'Dados da Obra');
 
   /* ---- ABA 2: TAREFAS DE MONTAGEM ---- */
-  const tarefasRows = [['ID','Grupo','Descrição','Tipo','Horas/un','Qtd / Metros','Horas Total','Valor Montador (R$)','Valor Auxiliar (R$)']];
+  // Valores de mão de obra só são exportados para administradores
+  const verFinanceiro = (nivelAcesso() === 'admin');
+
+  const cabTarefas = ['ID','Grupo','Descrição','Tipo','Horas/un','Qtd / Metros','Horas Total'];
+  if(verFinanceiro) cabTarefas.push('Valor Montador (R$)','Valor Auxiliar (R$)');
+  const tarefasRows = [cabTarefas];
   TASKS.forEach(t=>{
     const qtd = n(st.tasks[t.id])||0;
     const pt = r.perTask[t.id];
-    tarefasRows.push([
+    const linha = [
       t.id, t.grupo, t.desc,
       t.tipo==='fix' ? 'R$/metro' : 'Hora Técnica',
-      t.horas, qtd,
-      pt.horasTotal, pt.vMont, pt.vAux
-    ]);
+      t.horas, qtd, pt.horasTotal
+    ];
+    if(verFinanceiro) linha.push(pt.vMont, pt.vAux);
+    tarefasRows.push(linha);
   });
   tarefasRows.push([]);
-  tarefasRows.push(['','','','','','TMO Total (h)', r.tmoTotal,'','']);
-  tarefasRows.push(['','','','','','Pagamento Montador', '', r.laborMont,'']);
-  tarefasRows.push(['','','','','','Pagamento Auxiliar', '', '', r.laborAux]);
-  tarefasRows.push(['','','','','','Encargos Time (total)', '', r.encargosTime,'']);
+  tarefasRows.push(['','','','','','TMO Total (h)', r.tmoTotal]);
+  if(verFinanceiro){
+    tarefasRows.push(['','','','','','Pagamento Montador', '', r.laborMont,'']);
+    tarefasRows.push(['','','','','','Pagamento Auxiliar', '', '', r.laborAux]);
+    tarefasRows.push(['','','','','','Encargos Time (total)', '', r.encargosTime,'']);
+  }
   const ws2 = XLSX.utils.aoa_to_sheet(tarefasRows);
-  ws2['!cols'] = [{wch:10},{wch:24},{wch:52},{wch:14},{wch:10},{wch:14},{wch:12},{wch:18},{wch:18}];
+  ws2['!cols'] = verFinanceiro
+    ? [{wch:10},{wch:24},{wch:52},{wch:14},{wch:10},{wch:14},{wch:12},{wch:18},{wch:18}]
+    : [{wch:10},{wch:24},{wch:52},{wch:14},{wch:10},{wch:14},{wch:12}];
   XLSX.utils.book_append_sheet(wb, ws2, 'Tarefas de Montagem');
 
   /* ---- ABA 3: CUSTOS GERAIS ---- */
@@ -1716,7 +1750,7 @@ async function exportarExcel(st, r){
     ...st.extras.map(ex=>[ex.desc+' ('+ex.unidade+')', ex.qtd, n(ex.valorTotal)]),
     ['SUBTOTAL EXTRAS','', r.totalExtras],
     [],
-    ['Encargos Time (mão de obra)','', r.encargosTime],
+    ...(verFinanceiro ? [['Encargos Time (mão de obra)','', r.encargosTime]] : []),
     ['Desconto (%)', st.financeiro.desconto+'%',''],
     ['CUSTO TOTAL DA OBRA','', r.custoTotalObra],
   ];
@@ -1802,6 +1836,9 @@ async function exportarHistoricoExcel(){
   const list = await loadHistorico();
   if(!list.length){ toast('Nenhuma obra no histórico.'); return; }
 
+  // Valores de mão de obra só para administradores
+  const verFin = (nivelAcesso() === 'admin');
+
   const wb = XLSX.utils.book_new();
 
   /* aba RESUMO: uma linha por obra */
@@ -1843,11 +1880,12 @@ async function exportarHistoricoExcel(){
       ['Imposto (%)', s.financeiro.imposto],['Margem (%)', s.financeiro.margem],
       ['Valor Proposta', r.valorFinal],['Lucro Líquido', r.lucro],['Margem Real (%)', r.margemReal],
       [],
-      ['TAREFAS','Qtd','Horas Total','Valor Montador','Valor Auxiliar'],
-      ...TASKS.map(t=>[
-        t.desc, n(s.tasks[t.id])||0,
-        r.perTask[t.id].horasTotal, r.perTask[t.id].vMont, r.perTask[t.id].vAux
-      ]),
+      (verFin ? ['TAREFAS','Qtd','Horas Total','Valor Montador','Valor Auxiliar']
+              : ['TAREFAS','Qtd','Horas Total']),
+      ...TASKS.map(t=> verFin
+        ? [t.desc, n(s.tasks[t.id])||0, r.perTask[t.id].horasTotal, r.perTask[t.id].vMont, r.perTask[t.id].vAux]
+        : [t.desc, n(s.tasks[t.id])||0, r.perTask[t.id].horasTotal]
+      ),
       [],
       ['Observações', s.observacoes||'—'],
     ];
@@ -2031,6 +2069,8 @@ let globalParams = {
   emailsComuns: [],
   precos: { ...defaultState().precos },
   imposto: 22.15,
+  margemPadrao: 20,
+  margemMinima: 15,
 };
 
 function emailUsuarioAtual(){
@@ -2074,6 +2114,9 @@ function aplicarControleAcesso(){
     return;
   }
   overlayNegado.style.display = 'none';
+
+  // Classe no body controla a visibilidade de todos os elementos .somente-admin
+  document.body.classList.toggle('is-admin', nivel === 'admin');
 
   // Aba parâmetros: SOMENTE admin — nunca comum, nunca deslogado
   const tabParam = document.getElementById('tab-parametros');
@@ -2125,6 +2168,15 @@ function aplicarParamsAoState(){
   // Copia os preços globais para o state atual
   Object.assign(state.precos, globalParams.precos);
   state.financeiro.imposto = globalParams.imposto;
+  state.financeiro.margemMinima = globalParams.margemMinima;
+  // Margem: aplica o padrão apenas se a obra ainda não tem margem definida
+  if(!n(state.financeiro.margem)) state.financeiro.margem = globalParams.margemPadrao;
+  // Nunca abaixo do piso
+  if(n(state.financeiro.margem) < n(globalParams.margemMinima)){
+    state.financeiro.margem = globalParams.margemMinima;
+  }
+  const avisoMin = document.getElementById('aviso-margem-min');
+  if(avisoMin) avisoMin.textContent = num2(globalParams.margemMinima) + '%';
   fillSimpleInputsFromState();
   recalc();
 }
@@ -2136,12 +2188,16 @@ async function carregarEAplicarParams(){
     if(p.emailsComuns) globalParams.emailsComuns = p.emailsComuns;
     if(p.precos) globalParams.precos = { ...defaultState().precos, ...p.precos };
     if(p.imposto !== undefined) globalParams.imposto = p.imposto;
+    if(p.margemPadrao !== undefined) globalParams.margemPadrao = p.margemPadrao;
+    if(p.margemMinima !== undefined) globalParams.margemMinima = p.margemMinima;
     console.log('✅ Parâmetros aplicados:', {
       horaTecnica: globalParams.precos.horaTecnica,
       horaAuxiliar: globalParams.precos.horaAuxiliar,
       munck: globalParams.precos.munck,
       munckMes: globalParams.precos.munckMes,
       imposto: globalParams.imposto,
+      margemPadrao: globalParams.margemPadrao,
+      margemMinima: globalParams.margemMinima,
       admins: globalParams.emailsAutorizados.length,
       usuarios: globalParams.emailsComuns.length,
     });
@@ -2212,6 +2268,8 @@ function renderAbaParametros(){
     'p-vfesc': P.freteEscavadeiraKm, 'p-vesc': P.metroEscavadeira,
     'p-vbase': P.basePivo, 'p-vcasa': P.casaM2,
     'p-imposto': globalParams.imposto,
+    'p-margempadrao': globalParams.margemPadrao,
+    'p-margemminima': globalParams.margemMinima,
   };
   Object.entries(map).forEach(([id, val])=>{
     const el = document.getElementById(id);
@@ -2294,7 +2352,9 @@ document.getElementById('btn-salvar-params').addEventListener('click', async ()=
     basePivo:      lv('p-vbase', PA.basePivo),
     casaM2:        lv('p-vcasa', PA.casaM2),
   };
-  globalParams.imposto = lv('p-imposto', globalParams.imposto);
+  globalParams.imposto      = lv('p-imposto', globalParams.imposto);
+  globalParams.margemPadrao = lv('p-margempadrao', globalParams.margemPadrao);
+  globalParams.margemMinima = lv('p-margemminima', globalParams.margemMinima);
 
   const ok = await saveParams(globalParams);
   if(ok){
