@@ -453,8 +453,14 @@ function loadMsal(){
               <td style="padding:8px 10px;text-align:right;"><input type="number" id="i-imposto" step="0.01" style="width:120px;padding:6px 8px;border:1px solid var(--borda);border-radius:4px;text-align:right;font-family:var(--fonte-dado);font-size:.85rem;background:#fffdf9;"></td>
             </tr>
             <tr style="border-bottom:1px solid var(--areia-escura);">
-              <td style="padding:8px 10px;font-weight:600;">Desconto ao Cliente (%)</td>
-              <td style="padding:8px 10px;text-align:right;"><input type="number" id="i-desconto" step="0.1" style="width:120px;padding:6px 8px;border:1px solid var(--borda);border-radius:4px;text-align:right;font-family:var(--fonte-dado);font-size:.85rem;background:#fffdf9;"></td>
+              <td style="padding:8px 10px;font-weight:600;">
+                Desconto ao Cliente (%)
+                <span id="aviso-desconto-max" style="display:block;font-size:.72rem;font-weight:400;color:var(--texto-suave);margin-top:2px;"></span>
+              </td>
+              <td style="padding:8px 10px;text-align:right;">
+                <input type="number" id="i-desconto" step="0.1" style="width:120px;padding:6px 8px;border:1px solid var(--borda);border-radius:4px;text-align:right;font-family:var(--fonte-dado);font-size:.85rem;background:#fffdf9;">
+                <button class="btn ghost small somente-admin" id="btn-liberar-desconto" type="button" style="margin-left:6px;">🔓 Liberar</button>
+              </td>
             </tr>
             <tr style="border-bottom:1px solid var(--areia-escura);background:var(--areia);">
               <td style="padding:8px 10px;font-weight:600;color:var(--texto-suave);">Valor Sugerido <span style="font-size:.72rem;font-weight:400;">(com desconto)</span></td>
@@ -609,8 +615,9 @@ function loadMsal(){
         <div class="field"><label>Imposto (%)</label><input type="number" id="p-imposto" step="0.01"></div>
         <div class="field"><label>Margem de Lucro Padrão (%)</label><input type="number" id="p-margempadrao" step="0.1"></div>
         <div class="field"><label>Margem Mínima Permitida (%)</label><input type="number" id="p-margemminima" step="0.1"></div>
+        <div class="field"><label>Desconto Máximo Permitido (%)</label><input type="number" id="p-descontomaximo" step="0.1"></div>
       </div>
-      <div class="note" style="margin-top:8px;">A <strong>margem padrão</strong> é aplicada automaticamente a cada nova obra. O vendedor pode aumentá-la, mas nunca reduzir abaixo da <strong>margem mínima</strong>.</div>
+      <div class="note" style="margin-top:8px;">A <strong>margem padrão</strong> é aplicada automaticamente a cada nova obra. O vendedor pode aumentá-la, mas nunca reduzir abaixo da <strong>margem mínima</strong>. O <strong>desconto máximo</strong> é o teto de política — o app ainda reduz esse teto automaticamente quando o desconto ameaçar furar a margem mínima.</div>
     </div>
 
     <div style="display:flex;gap:10px;margin-top:6px;">
@@ -707,7 +714,7 @@ function defaultState(){
       {desc:'Técnico de Segurança', unidade:'mensal', qtd:0, valorTotal:0},
       {desc:'Insumos Adicionais', unidade:'un', qtd:0, valorTotal:0},
     ],
-    financeiro:{desconto:0, imposto:22.15, margem:20, margemMinima:15, valorFinalManual:null},
+    financeiro:{desconto:0, imposto:22.15, margem:20, margemMinima:15, descontoMaximo:10, descontoLiberado:false, valorFinalManual:null},
     observacoes:'',
   };
 }
@@ -904,6 +911,26 @@ function bindSimpleInputs(){
       }
     });
   }
+
+  // Desconto: aplica o teto ao sair do campo, salvo se liberado pelo admin
+  const elDesc = document.getElementById('i-desconto');
+  if(elDesc && !elDesc._tetoLigado){
+    elDesc._tetoLigado = true;
+    elDesc.addEventListener('blur', ()=>{
+      if(state.financeiro.descontoLiberado) return; // exceção aprovada pelo admin
+      const r = LAST || compute();
+      const teto = r.descontoMaxPermitido;
+      if(n(state.financeiro.desconto) > teto){
+        state.financeiro.desconto = Math.max(0, Number(teto.toFixed(2)));
+        elDesc.value = state.financeiro.desconto;
+        const motivo = (r.descontoPorMargem < r.descontoTetoParam)
+          ? 'limitado pela margem mínima'
+          : 'teto de política';
+        toast('Desconto máximo nesta obra: ' + num2(teto) + '% (' + motivo + ')');
+        recalc();
+      }
+    });
+  }
 }
 
 function fillSimpleInputsFromState(){
@@ -1031,7 +1058,22 @@ function compute(){
   const lucro = valorFinal-custoTotalObra-impostoValor;
   const margemReal = valorFinal>0 ? (lucro/valorFinal)*100 : 0;
 
-  Object.assign(out,{valorSugerido,valorFinal,impostoValor,lucro,margemReal});
+  // --- Teto de desconto ---
+  // Desconto que ainda mantém a margem real no piso mínimo:
+  //   d_max = 1 - (1 - margem - imposto) / (1 - imposto - margemMinima)
+  const margemMinPct = n(state.financeiro.margemMinima)/100;
+  const denomPiso = 1 - impostoPct - margemMinPct;
+  let descontoPorMargem = (denomPiso > 0 && denom > 0) ? (1 - denom/denomPiso)*100 : 0;
+  if(descontoPorMargem < 0) descontoPorMargem = 0;
+  const descontoTetoParam = n(state.financeiro.descontoMaximo);
+  // Vale o mais restritivo entre o teto de política e o piso de margem
+  const descontoMaxPermitido = Math.min(descontoTetoParam, descontoPorMargem);
+  const descontoLiberado = !!state.financeiro.descontoLiberado;
+
+  Object.assign(out,{
+    valorSugerido, valorFinal, impostoValor, lucro, margemReal,
+    descontoPorMargem, descontoTetoParam, descontoMaxPermitido, descontoLiberado
+  });
   return out;
 }
 
@@ -1091,6 +1133,21 @@ function recalc(){
   setText('out-impostovalor', brl(r.impostoValor));
   setText('out-lucro', brl(r.lucro));
   setText('out-margemreal', num2(r.margemReal)+'%');
+
+  // Aviso do teto de desconto desta obra
+  const avisoDesc = document.getElementById('aviso-desconto-max');
+  if(avisoDesc){
+    if(r.descontoLiberado){
+      avisoDesc.innerHTML = '<span style="color:var(--ferrugem);font-weight:700;">🔓 Liberado pelo administrador</span>';
+    } else {
+      const motivo = (r.descontoPorMargem < r.descontoTetoParam) ? 'margem mínima' : 'política';
+      avisoDesc.textContent = 'Máximo nesta obra: ' + num2(r.descontoMaxPermitido) + '% (' + motivo + ')';
+    }
+  }
+  const btnLib = document.getElementById('btn-liberar-desconto');
+  if(btnLib){
+    btnLib.textContent = r.descontoLiberado ? '🔒 Retravar' : '🔓 Liberar';
+  }
 }
 function setText(id,txt){const el=document.getElementById(id); if(el) el.textContent=txt;}
 function setVal(id,val){const el=document.getElementById(id); if(el) el.value=val;}
@@ -1154,6 +1211,25 @@ function renderProposta(){
   `;
 }
 document.getElementById('btn-print').addEventListener('click', ()=>{ renderProposta(); window.print(); });
+
+// Admin libera (ou retrava) o teto de desconto nesta obra — fica gravado no orçamento
+document.getElementById('btn-liberar-desconto').addEventListener('click', ()=>{
+  if(nivelAcesso() !== 'admin'){ toast('Apenas administradores podem liberar o desconto.'); return; }
+  if(state.financeiro.descontoLiberado){
+    state.financeiro.descontoLiberado = false;
+    const r = compute();
+    if(n(state.financeiro.desconto) > r.descontoMaxPermitido){
+      state.financeiro.desconto = Math.max(0, Number(r.descontoMaxPermitido.toFixed(2)));
+      const el = document.getElementById('i-desconto');
+      if(el) el.value = state.financeiro.desconto;
+    }
+    toast('Teto de desconto restaurado.');
+  } else {
+    state.financeiro.descontoLiberado = true;
+    toast('Desconto liberado nesta obra — a exceção fica gravada no orçamento.');
+  }
+  recalc();
+});
 
 /* ============================================================
    MICROSOFT GRAPH — autenticação e OneDrive compartilhado
@@ -1543,8 +1619,11 @@ async function renderHistorico(filtro=''){
         state._histId = item.id;
         state._histSavedBy = item.savedBy;
         // Parâmetros globais sempre prevalecem sobre os salvos na obra
+        // (a liberação de desconto é da obra e por isso não é sobrescrita)
         Object.assign(state.precos, globalParams.precos);
-        state.financeiro.imposto = globalParams.imposto;
+        state.financeiro.imposto        = globalParams.imposto;
+        state.financeiro.margemMinima   = globalParams.margemMinima;
+        state.financeiro.descontoMaximo = globalParams.descontoMaximo;
         renderAll();
         toast('Obra carregada — ao salvar, irá sobrescrever este registro.');
         document.querySelector('nav.tabs button[data-tab="obra"]').click();
@@ -2071,6 +2150,7 @@ let globalParams = {
   imposto: 22.15,
   margemPadrao: 20,
   margemMinima: 15,
+  descontoMaximo: 10,
 };
 
 function emailUsuarioAtual(){
@@ -2168,7 +2248,8 @@ function aplicarParamsAoState(){
   // Copia os preços globais para o state atual
   Object.assign(state.precos, globalParams.precos);
   state.financeiro.imposto = globalParams.imposto;
-  state.financeiro.margemMinima = globalParams.margemMinima;
+  state.financeiro.margemMinima  = globalParams.margemMinima;
+  state.financeiro.descontoMaximo = globalParams.descontoMaximo;
   // Margem: aplica o padrão apenas se a obra ainda não tem margem definida
   if(!n(state.financeiro.margem)) state.financeiro.margem = globalParams.margemPadrao;
   // Nunca abaixo do piso
@@ -2190,6 +2271,7 @@ async function carregarEAplicarParams(){
     if(p.imposto !== undefined) globalParams.imposto = p.imposto;
     if(p.margemPadrao !== undefined) globalParams.margemPadrao = p.margemPadrao;
     if(p.margemMinima !== undefined) globalParams.margemMinima = p.margemMinima;
+    if(p.descontoMaximo !== undefined) globalParams.descontoMaximo = p.descontoMaximo;
     console.log('✅ Parâmetros aplicados:', {
       horaTecnica: globalParams.precos.horaTecnica,
       horaAuxiliar: globalParams.precos.horaAuxiliar,
@@ -2198,6 +2280,7 @@ async function carregarEAplicarParams(){
       imposto: globalParams.imposto,
       margemPadrao: globalParams.margemPadrao,
       margemMinima: globalParams.margemMinima,
+      descontoMaximo: globalParams.descontoMaximo,
       admins: globalParams.emailsAutorizados.length,
       usuarios: globalParams.emailsComuns.length,
     });
@@ -2270,6 +2353,7 @@ function renderAbaParametros(){
     'p-imposto': globalParams.imposto,
     'p-margempadrao': globalParams.margemPadrao,
     'p-margemminima': globalParams.margemMinima,
+    'p-descontomaximo': globalParams.descontoMaximo,
   };
   Object.entries(map).forEach(([id, val])=>{
     const el = document.getElementById(id);
@@ -2354,7 +2438,8 @@ document.getElementById('btn-salvar-params').addEventListener('click', async ()=
   };
   globalParams.imposto      = lv('p-imposto', globalParams.imposto);
   globalParams.margemPadrao = lv('p-margempadrao', globalParams.margemPadrao);
-  globalParams.margemMinima = lv('p-margemminima', globalParams.margemMinima);
+  globalParams.margemMinima  = lv('p-margemminima', globalParams.margemMinima);
+  globalParams.descontoMaximo = lv('p-descontomaximo', globalParams.descontoMaximo);
 
   const ok = await saveParams(globalParams);
   if(ok){
