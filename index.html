@@ -433,6 +433,11 @@ function loadMsal(){
     <h2 class="pane-title no-print">Resumo &amp; Proposta Comercial</h2>
     <p class="pane-desc no-print">Defina a margem e o imposto para chegar ao valor da proposta. Use "Imprimir / Salvar PDF" para gerar o documento.</p>
 
+    <div id="alerta-custo-alterado" style="display:none;background:#fdf3e6;border:1px solid var(--ferrugem);border-left:5px solid var(--ferrugem);border-radius:6px;padding:14px 16px;margin-bottom:16px;">
+      <div style="font-weight:700;color:var(--ferrugem);font-size:.92rem;margin-bottom:6px;">⚠️ Custo alterado após a autorização do preço</div>
+      <div id="alerta-custo-detalhe" style="font-size:.84rem;color:var(--texto);line-height:1.6;"></div>
+    </div>
+
     <div class="card no-print">
       <h3>Precificação</h3>
 
@@ -639,6 +644,13 @@ function loadMsal(){
       <div class="note" style="margin-top:8px;">A <strong>margem padrão</strong> é aplicada automaticamente a cada nova obra. O vendedor pode aumentá-la, mas nunca reduzir abaixo da <strong>margem mínima</strong>. O <strong>desconto máximo</strong> é o teto de política — o app ainda reduz esse teto automaticamente quando o desconto ameaçar furar a margem mínima.</div>
     </div>
 
+    <div class="card">
+      <h3>Manutenção</h3>
+      <p class="pane-desc" style="margin-bottom:10px;">O índice de compartilhamentos acelera a abertura do histórico. Reconstrua se alguma obra compartilhada não estiver aparecendo para o destinatário.</p>
+      <button class="btn ghost small" id="btn-reconstruir-indice" type="button">Reconstruir índice de compartilhamentos</button>
+      <div id="status-indice" style="font-size:.8rem;color:var(--texto-suave);margin-top:8px;"></div>
+    </div>
+
     <div style="display:flex;gap:10px;margin-top:6px;">
       <button class="btn primary" id="btn-salvar-params" type="button">Salvar Parâmetros</button>
     </div>
@@ -664,6 +676,26 @@ function loadMsal(){
     <p style="color:var(--texto-suave);font-size:.9rem;margin:0 0 20px;">Seu e-mail não está cadastrado para usar este sistema. Entre em contato com o administrador para solicitar acesso.</p>
     <div id="overlay-email-info" style="background:var(--areia);border-radius:6px;padding:10px 14px;font-size:.82rem;color:var(--texto-suave);margin-bottom:20px;word-break:break-all;"></div>
     <button onclick="document.getElementById('btn-ms-login').click()" class="btn ghost" style="width:100%;" type="button">Entrar com outra conta</button>
+  </div>
+</div>
+
+<!-- Modal compartilhar / transferir -->
+<div id="modal-compartilhar" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:400;align-items:center;justify-content:center;padding:20px;">
+  <div style="background:#fff;border-radius:10px;padding:24px;max-width:440px;width:100%;">
+    <h3 id="modal-titulo" style="font-family:var(--fonte-titulo);color:var(--azul-escuro);margin:0 0 6px;font-size:1.15rem;"></h3>
+    <p id="modal-obra" style="font-size:.84rem;color:var(--texto-suave);margin:0 0 16px;"></p>
+
+    <label style="font-size:.74rem;color:var(--texto-suave);font-weight:600;display:block;margin-bottom:4px;">Selecione o destinatário</label>
+    <select id="modal-destinatario" style="width:100%;border:1px solid var(--borda);border-radius:4px;padding:9px 10px;font-size:.9rem;background:#fffdf9;font-family:var(--fonte-corpo);"></select>
+
+    <div id="modal-aviso" style="font-size:.78rem;color:var(--texto-suave);background:#f3f1ea;border-left:3px solid var(--azul-claro);padding:8px 10px;border-radius:0 4px 4px 0;margin-top:12px;"></div>
+
+    <div id="modal-compartilhados" style="margin-top:12px;"></div>
+
+    <div style="display:flex;gap:8px;margin-top:18px;justify-content:flex-end;">
+      <button class="btn ghost" id="modal-cancelar" type="button">Cancelar</button>
+      <button class="btn primary" id="modal-confirmar" type="button">Confirmar</button>
+    </div>
   </div>
 </div>
 
@@ -733,7 +765,7 @@ function defaultState(){
       {desc:'Técnico de Segurança', unidade:'mensal', qtd:0, valorTotal:0},
       {desc:'Insumos Adicionais', unidade:'un', qtd:0, valorTotal:0},
     ],
-    financeiro:{desconto:0, imposto:22.15, margem:20, margemMinima:15, descontoMaximo:10, descontoLiberado:false, descontoAutorizado:0, autorizadoPor:null, valorFinalManual:null},
+    financeiro:{desconto:0, imposto:22.15, margem:20, margemMinima:15, descontoMaximo:10, descontoLiberado:false, descontoAutorizado:0, autorizadoPor:null, custoNaAutorizacao:null, margemNaAutorizacao:null, valorFinalManual:null},
     observacoes:'',
   };
 }
@@ -942,6 +974,19 @@ function bindSimpleInputs(){
       // preservado — quem trata é o próprio botão
       if(window._liberandoDesconto) return;
 
+      const atual = n(state.financeiro.desconto);
+
+      // Preço autorizado e usuário comum: nada muda (rede de segurança)
+      if(state.financeiro.descontoLiberado && nivelAcesso() !== 'admin'){
+        if(Math.abs(atual - n(state.financeiro.descontoAutorizado)) >= 0.005){
+          state.financeiro.desconto = n(state.financeiro.descontoAutorizado);
+          elDesc.value = state.financeiro.desconto;
+          toast('Preço autorizado pelo administrador — não pode ser alterado.');
+        }
+        recalc();
+        return;
+      }
+
       // Mexeu no desconto: ele volta a comandar o valor final
       if(elDesc._aoFocar !== undefined && elDesc._aoFocar !== elDesc.value){
         if(state.financeiro.valorFinalManual != null){
@@ -951,8 +996,6 @@ function bindSimpleInputs(){
         }
       }
 
-      const atual = n(state.financeiro.desconto);
-
       if(state.financeiro.descontoLiberado){
         if(nivelAcesso() === 'admin'){
           // Admin ajustando dentro da liberação: o novo valor passa a ser o autorizado
@@ -960,13 +1003,6 @@ function bindSimpleInputs(){
           recalc();
           return;
         }
-        // Usuário comum: só mantém a liberação se o valor for exatamente o autorizado
-        if(Math.abs(atual - n(state.financeiro.descontoAutorizado)) < 0.005){
-          recalc();
-          return;
-        }
-        state.financeiro.descontoLiberado = false;
-        toast('Desconto autorizado alterado — regra padrão restabelecida.');
       }
 
       const r = compute();
@@ -1166,15 +1202,44 @@ function compute(){
   const descontoLiberado = !!state.financeiro.descontoLiberado;
   const descontoAutorizado = n(state.financeiro.descontoAutorizado);
   const autorizadoPor = state.financeiro.autorizadoPor || null;
+  // Custo registrado no momento em que o preço foi autorizado
+  const custoNaAutorizacao  = state.financeiro.custoNaAutorizacao;
+  const margemNaAutorizacao = state.financeiro.margemNaAutorizacao;
+  const custoAlterado = !!(descontoLiberado && custoNaAutorizacao != null
+                        && Math.abs(custoTotalObra - custoNaAutorizacao) > 0.01);
+  const deltaCusto = custoAlterado ? (custoTotalObra - custoNaAutorizacao) : 0;
   // Piso do valor final: equivale ao maior desconto permitido nesta obra
   const valorMinimoPermitido = valorSemDesconto * (1 - descontoMaxPermitido/100);
 
   Object.assign(out,{
     valorSugerido, valorFinal, impostoValor, lucro, margemReal, valorSemDesconto,
     descontoPorMargem, descontoTetoParam, descontoMaxPermitido, descontoLiberado,
-    descontoAutorizado, valorMinimoPermitido, autorizadoPor
+    descontoAutorizado, valorMinimoPermitido, autorizadoPor,
+    custoNaAutorizacao, margemNaAutorizacao, custoAlterado, deltaCusto
   });
   return out;
+}
+
+/* Enquanto o admin mantém o desconto autorizado, o preço fica travado para o
+   usuário comum. Só volta a ser editável se o admin retravar a proposta. */
+function aplicarTravaDesconto(r){
+  const travado = !!r.descontoLiberado && nivelAcesso() !== 'admin';
+  [['i-desconto','Preço autorizado pelo administrador — não editável'],
+   ['i-valorfinal','Preço autorizado pelo administrador — não editável'],
+   ['i-margem','Preço autorizado pelo administrador — não editável']
+  ].forEach(([id, dica])=>{
+    const el = document.getElementById(id);
+    if(!el) return;
+    el.disabled = travado;
+    el.style.background = travado ? 'var(--areia-escura)' : '#fffdf9';
+    el.style.cursor = travado ? 'not-allowed' : '';
+    el.title = travado ? dica : '';
+  });
+
+  const avisoVal = document.getElementById('aviso-valor-min');
+  if(avisoVal && travado){
+    avisoVal.innerHTML = '<span style="color:var(--ferrugem);font-weight:700;">🔒 Valor travado pelo administrador</span>';
+  }
 }
 
 let LAST = null;
@@ -1261,6 +1326,32 @@ function recalc(){
       ? 'Sem piso — desconto autorizado pelo administrador'
       : 'Mínimo permitido: ' + brl(r.valorMinimoPermitido);
   }
+
+  // Alerta: custo mudou depois que o preço foi autorizado
+  const boxAlerta = document.getElementById('alerta-custo-alterado');
+  const detAlerta = document.getElementById('alerta-custo-detalhe');
+  if(boxAlerta && detAlerta){
+    if(r.custoAlterado){
+      const subiu = r.deltaCusto > 0;
+      const perda = (r.margemNaAutorizacao != null) ? (r.margemNaAutorizacao - r.margemReal) : null;
+      detAlerta.innerHTML =
+        'Custo na autorização: <b>' + brl(r.custoNaAutorizacao) + '</b><br>' +
+        'Custo atual: <b>' + brl(r.custoTotalObra) + '</b> ' +
+        '<span style="color:' + (subiu ? 'var(--erro)' : 'var(--verde)') + ';font-weight:700;">(' +
+        (subiu ? '+' : '') + brl(r.deltaCusto) + ')</span><br>' +
+        'Margem real agora: <b>' + num2(r.margemReal) + '%</b>' +
+        (r.margemNaAutorizacao != null
+          ? ' — era <b>' + num2(r.margemNaAutorizacao) + '%</b> quando foi autorizado' +
+            (perda > 0.005 ? ' <span style="color:var(--erro);font-weight:700;">(−' + num2(perda) + ' p.p.)</span>' : '')
+          : '') +
+        '<br><span style="color:var(--texto-suave);font-size:.8rem;">O preço autorizado continua valendo. Revise com o administrador se a rentabilidade não se sustentar.</span>';
+      boxAlerta.style.display = 'block';
+    } else {
+      boxAlerta.style.display = 'none';
+    }
+  }
+
+  aplicarTravaDesconto(r);
 }
 function setText(id,txt){const el=document.getElementById(id); if(el) el.textContent=txt;}
 function setVal(id,val){const el=document.getElementById(id); if(el) el.value=val;}
@@ -1349,6 +1440,8 @@ document.getElementById('btn-liberar-desconto').addEventListener('click', async 
     state.financeiro.descontoLiberado = false;
     state.financeiro.descontoAutorizado = 0;
     state.financeiro.autorizadoPor = null;
+    state.financeiro.custoNaAutorizacao = null;
+    state.financeiro.margemNaAutorizacao = null;
     const r = compute();
     if(n(state.financeiro.desconto) > r.descontoMaxPermitido){
       state.financeiro.desconto = Math.max(0, Number(r.descontoMaxPermitido.toFixed(2)));
@@ -1399,6 +1492,10 @@ document.getElementById('btn-liberar-desconto').addEventListener('click', async 
     email: msAccount ? (msAccount.username || '') : '',
     em: Date.now(),
   };
+  // Fotografia do custo no momento da autorização — base do alerta de alteração
+  const snap = compute();
+  state.financeiro.custoNaAutorizacao  = snap.custoTotalObra;
+  state.financeiro.margemNaAutorizacao = snap.margemReal;
   if(elDescLib) elDescLib.value = digitado;
   if(usarValorFinal && elVFLib) elVFLib.value = state.financeiro.valorFinalManual;
   recalc();
@@ -1451,6 +1548,7 @@ const SP_BIBLIOTECA  = 'Documentos Compartilhados';
 const SP_PASTA       = 'Orçamentos Montagem/Historico_montagem';
 const HIST_FILENAME  = 'historico.json';
 const PARAMS_FILENAME = 'parametros.json';
+const INDICE_FILENAME = 'compartilhamentos.json';
 
 // Codifica apenas segmentos — preserva as barras
 function spEncodePath(path){
@@ -1709,15 +1807,121 @@ async function loadTodosRegistros(){
   return todos.flat();
 }
 
+/* ============================================================
+   ÍNDICE DE COMPARTILHAMENTOS
+   Evita varrer todos os arquivos da pasta a cada abertura do histórico.
+   Formato: { entradas: [ { id, dono, com:[emails], em } ] }
+   ============================================================ */
+const IDX_KEY_LOCAL = 'mcpo-indice-compart';
+
+async function loadIndice(){
+  if(msAccount){
+    try{
+      const token = await getGraphToken();
+      if(!token) return null;
+      const base = await spDriveUrl(spPath(INDICE_FILENAME));
+      if(!base) return null;
+      const r = await fetch(base + ':/content', {
+        headers:{ Authorization:'Bearer '+token, 'Cache-Control':'no-cache' },
+        cache:'no-store'
+      });
+      if(r.status === 404) return null;   // ainda não existe
+      if(!r.ok) return null;
+      const d = JSON.parse(await r.text());
+      return Array.isArray(d.entradas) ? d : null;
+    }catch(e){ console.warn('loadIndice:', e); return null; }
+  }
+  try{ const x = localStorage.getItem(IDX_KEY_LOCAL); return x ? JSON.parse(x) : null; }
+  catch(e){ return null; }
+}
+
+async function saveIndice(idx){
+  idx.atualizadoEm = Date.now();
+  const json = JSON.stringify(idx, null, 2);
+  if(msAccount){
+    await ensureFolder();
+    return await graphPut(spPath(INDICE_FILENAME), new TextEncoder().encode(json));
+  }
+  try{ localStorage.setItem(IDX_KEY_LOCAL, json); return true; }catch(e){ return false; }
+}
+
+/* Regrava a entrada de uma obra no índice (lê antes de escrever, para não
+   atropelar quem tenha compartilhado outra obra nesse meio-tempo) */
+async function atualizarIndice(id, dono, listaEmails){
+  const idx = (await loadIndice()) || { entradas: [] };
+  const pos = idx.entradas.findIndex(e => e.id === id);
+  if(!listaEmails || !listaEmails.length){
+    if(pos >= 0) idx.entradas.splice(pos, 1);   // sem ninguém: sai do índice
+  } else {
+    const entrada = { id, dono: (dono||'').toLowerCase(), com: listaEmails.map(e=>e.toLowerCase()), em: Date.now() };
+    if(pos >= 0) idx.entradas[pos] = entrada; else idx.entradas.push(entrada);
+  }
+  return await saveIndice(idx);
+}
+
+async function removerDoIndice(id){
+  const idx = await loadIndice();
+  if(!idx) return true;
+  const antes = idx.entradas.length;
+  idx.entradas = idx.entradas.filter(e => e.id !== id);
+  return antes === idx.entradas.length ? true : await saveIndice(idx);
+}
+
+/* Reconstrói o índice varrendo todos os arquivos — usado pelo admin quando
+   o índice se perde ou para trazer compartilhamentos antigos */
+async function reconstruirIndice(){
+  const todos = await loadTodosRegistros();
+  const entradas = [];
+  todos.forEach(reg=>{
+    const cc = reg.compartilhadoCom || [];
+    if(cc.length){
+      entradas.push({
+        id: reg.id,
+        dono: (reg.savedBy?.email||'').toLowerCase(),
+        com: cc.map(p=>(p.email||'').toLowerCase()),
+        em: Date.now(),
+      });
+    }
+  });
+  const ok = await saveIndice({ entradas });
+  return { ok, total: entradas.length };
+}
+
+function compartilhadaComigo(reg, email){
+  const lista = reg.compartilhadoCom || [];
+  return lista.some(p => (p.email||'').toLowerCase() === email);
+}
+
 async function loadHistorico(){
   if(msAccount){
     const nivel = nivelAcesso();
+    const eu = emailUsuarioAtual();
     let lista;
     if(nivel === 'admin'){
       try{ lista = await loadTodosRegistros(); }
       catch(e){ console.warn('loadHistorico admin error:', e); lista = []; }
     } else {
-      lista = await loadHistoricoDeEmail(emailUsuarioAtual());
+      // Próprias obras + as compartilhadas comigo (localizadas pelo índice)
+      const proprias = await loadHistoricoDeEmail(eu);
+      let compartilhadas = [];
+      try{
+        const idx = await loadIndice();
+        if(idx){
+          // Só os donos que realmente compartilharam algo comigo
+          const minhas = idx.entradas.filter(e => (e.com||[]).includes(eu));
+          const donos = [...new Set(minhas.map(e => e.dono).filter(d => d && d !== eu))];
+          const idsPermitidos = new Set(minhas.map(e => e.id));
+          const listas = await Promise.all(donos.map(d => loadHistoricoDeEmail(d)));
+          compartilhadas = listas.flat().filter(x => idsPermitidos.has(x.id));
+        } else {
+          // Índice ausente: varredura completa como plano B
+          const todos = await loadTodosRegistros();
+          compartilhadas = todos.filter(x =>
+            (x.savedBy?.email||'').toLowerCase() !== eu && compartilhadaComigo(x, eu)
+          );
+        }
+      }catch(e){ console.warn('compartilhadas:', e); }
+      lista = [...proprias, ...compartilhadas];
     }
     return lista.filter(x => !x.excluido); // excluídos ficam só na Lixeira
   }
@@ -1826,10 +2030,29 @@ async function renderHistorico(filtro=''){
               ? ' por ' + escapeHtml(item.data.financeiro.autorizadoPor.nome || item.data.financeiro.autorizadoPor.email)
               : ''}
         </span>` : ''}
+        ${(()=>{
+          const eu = emailUsuarioAtual();
+          const donoEmail = (item.savedBy?.email||'').toLowerCase();
+          if(donoEmail && donoEmail !== eu && nivelAcesso() !== 'admin'){
+            return `<span style="display:block;margin-top:3px;font-size:.78rem;color:var(--azul-claro);font-weight:700;">🤝 Compartilhada por ${escapeHtml(item.savedBy?.nome || donoEmail)}</span>`;
+          }
+          const cc = item.compartilhadoCom || [];
+          if(cc.length){
+            return `<span style="display:block;margin-top:3px;font-size:.78rem;color:var(--azul-claro);font-weight:700;">🤝 Compartilhada com ${cc.map(p=>escapeHtml(p.email)).join(', ')}</span>`;
+          }
+          return '';
+        })()}
+        ${r_item.custoAlterado ? `
+        <span style="display:block;margin-top:3px;font-size:.78rem;color:var(--erro);font-weight:700;">
+          ⚠️ Custo alterado após a autorização (${r_item.deltaCusto > 0 ? '+' : ''}${brl(r_item.deltaCusto)})
+        </span>` : ''}
       </div>
       <div class="actions" style="flex-wrap:wrap;gap:6px;">
         <button class="btn ghost small" data-open="${item.id}" type="button">Abrir</button>
         <button class="btn ghost small" data-xls="${item.id}" type="button">Excel</button>
+        ${podeGerenciar(item) ? `
+        <button class="btn ghost small" data-compart="${item.id}" type="button">🤝 Compartilhar</button>
+        <button class="btn ghost small" data-transf="${item.id}" type="button">➡ Transferir</button>` : ''}
         <button class="btn danger small" data-del="${item.id}" data-del-email="${(item.savedBy||{}).email||emailUsuarioAtual()}" type="button">Excluir</button>
       </div>`;
     wrap.appendChild(div);
@@ -1842,6 +2065,7 @@ async function renderHistorico(filtro=''){
         state = JSON.parse(JSON.stringify(item.data));
         state._histId = item.id;
         state._histSavedBy = item.savedBy;
+        state._histSavedAt = item.savedAt;   // base para detectar edição concorrente
         // Parâmetros globais sempre prevalecem sobre os salvos na obra
         // (a liberação de desconto é da obra e por isso não é sobrescrita)
         Object.assign(state.precos, globalParams.precos);
@@ -1858,6 +2082,18 @@ async function renderHistorico(filtro=''){
     btn.addEventListener('click', ()=>{
       const item = _histCache.find(x=>x.id===btn.dataset.xls);
       if(item){ exportarExcel(item.data, computeFromState(item.data)); toast('Gerando Excel...'); }
+    });
+  });
+  wrap.querySelectorAll('button[data-compart]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const item = _histCache.find(x=>x.id===btn.dataset.compart);
+      if(item) abrirModal(item, 'compartilhar');
+    });
+  });
+  wrap.querySelectorAll('button[data-transf]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const item = _histCache.find(x=>x.id===btn.dataset.transf);
+      if(item) abrirModal(item, 'transferir');
     });
   });
   wrap.querySelectorAll('button[data-del]').forEach(btn=>{
@@ -1881,6 +2117,134 @@ async function renderHistorico(filtro=''){
     });
   });
 }
+
+/* ============================================================
+   COMPARTILHAR / TRANSFERIR OBRAS
+   ============================================================ */
+let _modalItem = null, _modalModo = null;
+
+function todosUsuarios(){
+  const lista = [
+    ...(globalParams.emailsAutorizados||[]).map(e=>({email:e, tipo:'admin'})),
+    ...(globalParams.emailsComuns||[]).map(e=>({email:e, tipo:'usuário'})),
+  ];
+  const eu = emailUsuarioAtual();
+  return lista.filter(u => (u.email||'').toLowerCase() !== eu);
+}
+
+function podeGerenciar(item){
+  if(nivelAcesso() === 'admin') return true;
+  return (item.savedBy?.email||'').toLowerCase() === emailUsuarioAtual();
+}
+
+function abrirModal(item, modo){
+  _modalItem = item; _modalModo = modo;
+  const transf = (modo === 'transferir');
+  document.getElementById('modal-titulo').textContent = transf ? 'Transferir obra' : 'Compartilhar obra';
+  document.getElementById('modal-obra').textContent =
+    (item.data.info.cliente || 'Cliente não informado') + ' — ' + (item.data.info.obra || 'Obra sem nome');
+  document.getElementById('modal-aviso').textContent = transf
+    ? 'A obra sai do seu histórico e passa a pertencer ao destinatário. Você deixa de vê-la.'
+    : 'O destinatário passa a ver e editar esta mesma obra. As alterações valem para os dois.';
+  document.getElementById('modal-confirmar').textContent = transf ? 'Transferir' : 'Compartilhar';
+
+  const sel = document.getElementById('modal-destinatario');
+  const usuarios = todosUsuarios();
+  sel.innerHTML = usuarios.length
+    ? usuarios.map(u=>`<option value="${escapeHtml(u.email)}">${escapeHtml(u.email)} (${u.tipo})</option>`).join('')
+    : '<option value="">Nenhum outro usuário cadastrado</option>';
+  document.getElementById('modal-confirmar').disabled = !usuarios.length;
+
+  // Lista de quem já tem acesso (só no modo compartilhar)
+  const box = document.getElementById('modal-compartilhados');
+  const jaCompart = item.compartilhadoCom || [];
+  if(!transf && jaCompart.length){
+    box.innerHTML = '<div style="font-size:.74rem;color:var(--texto-suave);font-weight:600;margin-bottom:4px;">Já tem acesso</div>' +
+      jaCompart.map((p,idx)=>
+        `<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--areia-escura);font-size:.84rem;">
+           <span style="flex:1;">👤 ${escapeHtml(p.email)}</span>
+           <button class="btn danger small" data-rem-compart="${idx}" type="button">remover</button>
+         </div>`).join('');
+    box.querySelectorAll('button[data-rem-compart]').forEach(b=>{
+      b.addEventListener('click', async ()=>{
+        const i = Number(b.dataset.remCompart);
+        const dono = (item.savedBy?.email||'').toLowerCase();
+        const lista = await loadHistoricoDeEmail(dono);
+        const idx = lista.findIndex(x=>x.id===item.id);
+        if(idx<0) return;
+        (lista[idx].compartilhadoCom||[]).splice(i,1);
+        await gravarArquivoDe(dono, lista);
+        await atualizarIndice(item.id, dono, (lista[idx].compartilhadoCom||[]).map(p=>p.email));
+        item.compartilhadoCom = lista[idx].compartilhadoCom;
+        toast('Acesso removido.');
+        abrirModal(item, 'compartilhar');
+        renderHistorico(document.getElementById('hist-busca').value);
+      });
+    });
+  } else box.innerHTML = '';
+
+  document.getElementById('modal-compartilhar').style.display = 'flex';
+}
+
+function fecharModal(){
+  document.getElementById('modal-compartilhar').style.display = 'none';
+  _modalItem = null; _modalModo = null;
+}
+
+document.getElementById('modal-cancelar').addEventListener('click', fecharModal);
+document.getElementById('modal-compartilhar').addEventListener('click', e=>{
+  if(e.target.id === 'modal-compartilhar') fecharModal();
+});
+
+document.getElementById('modal-confirmar').addEventListener('click', async ()=>{
+  if(!_modalItem) return;
+  const destino = (document.getElementById('modal-destinatario').value||'').toLowerCase();
+  if(!destino){ toast('Selecione um destinatário.'); return; }
+
+  const item = _modalItem, modo = _modalModo;
+  const dono = (item.savedBy?.email||'').toLowerCase() || emailUsuarioAtual();
+  const eu = {
+    nome: msAccount ? (msAccount.name || msAccount.username) : '',
+    email: emailUsuarioAtual(),
+  };
+
+  const lista = await loadHistoricoDeEmail(dono);
+  const idx = lista.findIndex(x=>x.id===item.id);
+  if(idx < 0){ toast('Registro não encontrado.'); fecharModal(); return; }
+
+  if(modo === 'compartilhar'){
+    const atuais = lista[idx].compartilhadoCom || [];
+    if(atuais.some(p=>(p.email||'').toLowerCase()===destino)){
+      toast('Este usuário já tem acesso.'); return;
+    }
+    atuais.push({ email: destino, por: eu, em: Date.now() });
+    lista[idx].compartilhadoCom = atuais;
+    const ok = await gravarArquivoDe(dono, lista);
+    if(ok) await atualizarIndice(item.id, dono, atuais.map(p=>p.email));
+    toast(ok ? 'Obra compartilhada com ' + destino : 'Falha ao compartilhar.');
+  } else {
+    // Transferir: sai do arquivo do dono e entra no do destinatário
+    const registro = JSON.parse(JSON.stringify(lista[idx]));
+    registro.savedBy = { nome: destino, email: destino };
+    registro.transferidoPor = { ...eu, de: dono, em: Date.now() };
+    lista.splice(idx, 1);
+
+    const listaDestino = await loadHistoricoDeEmail(destino);
+    listaDestino.push(registro);
+
+    const ok1 = await gravarArquivoDe(destino, listaDestino);
+    const ok2 = ok1 ? await gravarArquivoDe(dono, lista) : false;
+    if(ok1 && ok2){
+      const cc = (registro.compartilhadoCom||[]).map(p=>p.email);
+      await atualizarIndice(item.id, destino, cc);   // novo dono no índice
+    }
+    toast((ok1 && ok2) ? 'Obra transferida para ' + destino : 'Falha na transferência.');
+    if(state._histId === item.id){ state._histId = null; state._histSavedBy = null; }
+  }
+
+  fecharModal();
+  renderHistorico(document.getElementById('hist-busca').value);
+});
 
 /* ============================================================
    LIXEIRA — somente admin
@@ -1978,6 +2342,7 @@ async function renderLixeira(filtro=''){
       let lista = await loadHistoricoDeEmail(dono);
       lista = lista.filter(x=>x.id!==id);
       const ok = await gravarArquivoDe(dono, lista);
+      if(ok) await removerDoIndice(id);
       toast(ok ? 'Obra excluída definitivamente.' : 'Falha ao excluir.');
       renderLixeira(document.getElementById('lix-busca').value);
     });
@@ -2014,6 +2379,23 @@ async function gravarObraNoHistorico({ silencioso = false } = {}){
     ? await loadHistoricoDeEmail(donoEmail || eu.email)
     : (()=>{ try{ const x=localStorage.getItem(HIST_KEY_LOCAL); return x?JSON.parse(x):[]; }catch(e){ return []; } })();
 
+  // Edição concorrente: o registro mudou desde que foi aberto?
+  if(histId && state._histSavedAt){
+    const atualNoArquivo = list.find(x=>x.id===histId);
+    if(atualNoArquivo && atualNoArquivo.savedAt && atualNoArquivo.savedAt !== state._histSavedAt){
+      const quem = atualNoArquivo.ultimaEdicao?.nome || atualNoArquivo.savedBy?.nome || 'outro usuário';
+      const quando = new Date(atualNoArquivo.savedAt).toLocaleString('pt-BR');
+      const seguir = confirm(
+        'Esta obra foi alterada por ' + quem + ' em ' + quando + '.\n\n' +
+        'Salvar agora vai sobrescrever essas alterações. Deseja continuar?'
+      );
+      if(!seguir){
+        if(!silencioso) toast('Gravação cancelada — reabra a obra para ver a versão atual.');
+        return false;
+      }
+    }
+  }
+
   const registro = {
     id: histId || ('obra-'+Date.now()+'-'+Math.random().toString(36).slice(2,7)),
     savedAt: Date.now(),
@@ -2024,10 +2406,16 @@ async function gravarObraNoHistorico({ silencioso = false } = {}){
   };
   delete registro.data._histId;
   delete registro.data._histSavedBy;
+  delete registro.data._histSavedAt;
 
   if(histId){
     const idx = list.findIndex(x=>x.id===histId);
-    if(idx >= 0) list[idx] = registro; else list.push(registro);
+    if(idx >= 0){
+      // preserva metadados que não pertencem ao formulário
+      if(list[idx].compartilhadoCom) registro.compartilhadoCom = list[idx].compartilhadoCom;
+      if(list[idx].transferidoPor)   registro.transferidoPor   = list[idx].transferidoPor;
+      list[idx] = registro;
+    } else list.push(registro);
   } else {
     list.push(registro);
   }
@@ -2046,6 +2434,7 @@ async function gravarObraNoHistorico({ silencioso = false } = {}){
   if(ok){
     state._histId = registro.id;
     state._histSavedBy = dono;
+    state._histSavedAt = registro.savedAt;
     if(!silencioso){
       if(histId && editandoDeOutro) toast('Obra atualizada no histórico de ' + (dono.nome || donoEmail) + '.');
       else if(histId)              toast('Obra atualizada!');
@@ -2752,6 +3141,17 @@ document.getElementById('inp-novo-email-comum').addEventListener('keydown', e=>{
 });
 
 // Botão salvar parâmetros
+document.getElementById('btn-reconstruir-indice').addEventListener('click', async ()=>{
+  if(nivelAcesso() !== 'admin'){ toast('Acesso restrito a administradores.'); return; }
+  const el = document.getElementById('status-indice');
+  el.textContent = 'Varrendo os arquivos da equipe...';
+  const { ok, total } = await reconstruirIndice();
+  el.textContent = ok
+    ? '✅ Índice reconstruído — ' + total + ' obra(s) compartilhada(s) registrada(s).'
+    : '❌ Não foi possível gravar o índice.';
+  toast(ok ? 'Índice reconstruído.' : 'Falha ao reconstruir o índice.');
+});
+
 document.getElementById('btn-salvar-params').addEventListener('click', async ()=>{
   // ler valores da aba parâmetros
   // lv: lê o campo; se estiver vazio/ausente, mantém o valor atual salvo (nunca zera por engano)
