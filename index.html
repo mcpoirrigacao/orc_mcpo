@@ -26,15 +26,15 @@ function loadMsal(){
 </script>
 <style>
   :root{
-    --azul-escuro:#0f2d3d;
-    --azul:#12495f;
-    --azul-claro:#1f7a8c;
+    --azul-escuro:#03590f;
+    --azul:#0a7517;
+    --azul-claro:#1f8c33;
     --areia:#f4efe6;
     --areia-escura:#e8dfd0;
     --ferrugem:#c1541c;
     --verde:#4c7a3f;
-    --texto:#1c2a2e;
-    --texto-suave:#5b6b6e;
+    --texto:#1e2b22;
+    --texto-suave:#5f6e62;
     --branco:#ffffff;
     --borda:#d9d0bf;
     --erro:#a3312a;
@@ -72,7 +72,7 @@ function loadMsal(){
     font-size:.72rem;
     text-transform:uppercase;
     letter-spacing:1.5px;
-    color:#bcd7de;
+    color:#bcdec2;
   }
   nav.tabs{
     display:flex;
@@ -87,7 +87,7 @@ function loadMsal(){
     flex:0 0 auto;
     background:transparent;
     border:none;
-    color:#a9c8cf;
+    color:#a9cfb2;
     padding:9px 14px;
     font-size:.82rem;
     font-weight:600;
@@ -171,12 +171,12 @@ function loadMsal(){
   }
   .tablewrap{overflow-x:auto;border:1px solid var(--borda);border-radius:6px;}
   .tag{display:inline-block;font-size:.65rem;padding:2px 6px;border-radius:3px;font-weight:700;letter-spacing:.3px;}
-  .tag.pct{background:#e4eef1;color:var(--azul-claro);}
+  .tag.pct{background:#e4f1e6;color:var(--azul-claro);}
   .tag.fix{background:#f3e6de;color:var(--ferrugem);}
 
   .totals-strip{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-top:14px;}
   .total-box{background:var(--azul-escuro);color:#fff;border-radius:6px;padding:12px 14px;}
-  .total-box .label{font-size:.66rem;text-transform:uppercase;letter-spacing:.5px;color:#a9c8cf;}
+  .total-box .label{font-size:.66rem;text-transform:uppercase;letter-spacing:.5px;color:#a9cfb2;}
   .total-box .value{font-family:var(--fonte-dado);font-size:1.15rem;font-weight:700;margin-top:3px;}
   .total-box.accent{background:var(--ferrugem);}
   .total-box .value.sm{font-size:.95rem;}
@@ -193,7 +193,7 @@ function loadMsal(){
   .btn.primary{background:var(--ferrugem);color:#fff;}
   .btn.primary:hover{filter:brightness(1.08);}
   .btn.ghost{background:transparent;color:var(--azul);border:1px solid var(--azul-claro);}
-  .btn.ghost:hover{background:#eef5f6;}
+  .btn.ghost:hover{background:#eef6ef;}
   .btn.danger{background:transparent;color:var(--erro);border:1px solid var(--erro);}
   .btn.danger:hover{background:#fbeceb;}
   .btn.small{padding:5px 10px;font-size:.72rem;}
@@ -265,7 +265,7 @@ function loadMsal(){
       <button id="btn-ms-login" class="btn" style="background:rgba(255,255,255,.15);color:#fff;border:1px solid rgba(255,255,255,.3);font-size:.75rem;padding:6px 12px;" type="button">
         <span id="ms-login-label">⏳ Inicializando...</span>
       </button>
-      <div id="ms-user-info" style="display:none;font-size:.72rem;color:#a9c8cf;margin-top:3px;text-align:right;"></div>
+      <div id="ms-user-info" style="display:none;font-size:.72rem;color:#a9cfb2;margin-top:3px;text-align:right;"></div>
     </div>
   </div>
   <nav class="tabs" id="tabs">
@@ -467,7 +467,10 @@ function loadMsal(){
               <td style="padding:8px 10px;text-align:right;font-family:var(--fonte-dado);font-weight:700;color:var(--azul-claro);" id="o-valorsugerido">R$ 0</td>
             </tr>
             <tr style="border-bottom:1px solid var(--areia-escura);">
-              <td style="padding:8px 10px;font-weight:600;">Valor Final da Proposta <span style="font-size:.72rem;font-weight:400;">(editável)</span></td>
+              <td style="padding:8px 10px;font-weight:600;">
+                Valor Final da Proposta <span style="font-size:.72rem;font-weight:400;">(editável)</span>
+                <span id="aviso-valor-min" style="display:block;font-size:.72rem;font-weight:400;color:var(--texto-suave);margin-top:2px;"></span>
+              </td>
               <td style="padding:8px 10px;text-align:right;"><input type="number" id="i-valorfinal" step="0.01" style="width:160px;padding:6px 8px;border:1px solid var(--borda);border-radius:4px;text-align:right;font-family:var(--fonte-dado);font-size:.85rem;background:#fffdf9;"></td>
             </tr>
             <tr style="border-bottom:1px solid var(--areia-escura);background:var(--areia);">
@@ -714,7 +717,7 @@ function defaultState(){
       {desc:'Técnico de Segurança', unidade:'mensal', qtd:0, valorTotal:0},
       {desc:'Insumos Adicionais', unidade:'un', qtd:0, valorTotal:0},
     ],
-    financeiro:{desconto:0, imposto:22.15, margem:20, margemMinima:15, descontoMaximo:10, descontoLiberado:false, valorFinalManual:null},
+    financeiro:{desconto:0, imposto:22.15, margem:20, margemMinima:15, descontoMaximo:10, descontoLiberado:false, descontoAutorizado:0, valorFinalManual:null},
     observacoes:'',
   };
 }
@@ -912,13 +915,30 @@ function bindSimpleInputs(){
     });
   }
 
-  // Desconto: aplica o teto ao sair do campo, salvo se liberado pelo admin
+  // Desconto: teto vale sempre, exceto quando o admin liberou esta obra
   const elDesc = document.getElementById('i-desconto');
   if(elDesc && !elDesc._tetoLigado){
     elDesc._tetoLigado = true;
     elDesc.addEventListener('blur', ()=>{
-      if(state.financeiro.descontoLiberado) return; // exceção aprovada pelo admin
-      const r = LAST || compute();
+      const atual = n(state.financeiro.desconto);
+
+      if(state.financeiro.descontoLiberado){
+        if(nivelAcesso() === 'admin'){
+          // Admin ajustando dentro da liberação: o novo valor passa a ser o autorizado
+          state.financeiro.descontoAutorizado = atual;
+          recalc();
+          return;
+        }
+        // Usuário comum: só mantém a liberação se o valor for exatamente o autorizado
+        if(Math.abs(atual - n(state.financeiro.descontoAutorizado)) < 0.005){
+          recalc();
+          return;
+        }
+        state.financeiro.descontoLiberado = false;
+        toast('Desconto autorizado alterado — regra padrão restabelecida.');
+      }
+
+      const r = compute();
       const teto = r.descontoMaxPermitido;
       if(n(state.financeiro.desconto) > teto){
         state.financeiro.desconto = Math.max(0, Number(teto.toFixed(2)));
@@ -927,6 +947,24 @@ function bindSimpleInputs(){
           ? 'limitado pela margem mínima'
           : 'teto de política';
         toast('Desconto máximo nesta obra: ' + num2(teto) + '% (' + motivo + ')');
+      }
+      recalc();
+    });
+  }
+
+  // Valor final: não pode cair abaixo do piso equivalente ao desconto máximo
+  const elVF = document.getElementById('i-valorfinal');
+  if(elVF && !elVF._pisoLigado){
+    elVF._pisoLigado = true;
+    elVF.addEventListener('blur', ()=>{
+      if(state.financeiro.valorFinalManual == null) return; // em branco = usa o sugerido
+      if(state.financeiro.descontoLiberado) return;         // exceção aprovada pelo admin
+      const r = compute();
+      const piso = r.valorMinimoPermitido;
+      if(n(state.financeiro.valorFinalManual) < piso){
+        state.financeiro.valorFinalManual = Number(piso.toFixed(2));
+        elVF.value = state.financeiro.valorFinalManual;
+        toast('Valor mínimo desta obra: ' + brl(piso) + ' (margem/desconto)');
         recalc();
       }
     });
@@ -1069,10 +1107,14 @@ function compute(){
   // Vale o mais restritivo entre o teto de política e o piso de margem
   const descontoMaxPermitido = Math.min(descontoTetoParam, descontoPorMargem);
   const descontoLiberado = !!state.financeiro.descontoLiberado;
+  const descontoAutorizado = n(state.financeiro.descontoAutorizado);
+  // Piso do valor final: equivale ao maior desconto permitido nesta obra
+  const valorMinimoPermitido = valorSemDesconto * (1 - descontoMaxPermitido/100);
 
   Object.assign(out,{
-    valorSugerido, valorFinal, impostoValor, lucro, margemReal,
-    descontoPorMargem, descontoTetoParam, descontoMaxPermitido, descontoLiberado
+    valorSugerido, valorFinal, impostoValor, lucro, margemReal, valorSemDesconto,
+    descontoPorMargem, descontoTetoParam, descontoMaxPermitido, descontoLiberado,
+    descontoAutorizado, valorMinimoPermitido
   });
   return out;
 }
@@ -1138,7 +1180,8 @@ function recalc(){
   const avisoDesc = document.getElementById('aviso-desconto-max');
   if(avisoDesc){
     if(r.descontoLiberado){
-      avisoDesc.innerHTML = '<span style="color:var(--ferrugem);font-weight:700;">🔓 Liberado pelo administrador</span>';
+      avisoDesc.innerHTML = '<span style="color:var(--ferrugem);font-weight:700;">🔓 Autorizado pelo administrador: '
+        + num2(r.descontoAutorizado) + '%</span>';
     } else {
       const motivo = (r.descontoPorMargem < r.descontoTetoParam) ? 'margem mínima' : 'política';
       avisoDesc.textContent = 'Máximo nesta obra: ' + num2(r.descontoMaxPermitido) + '% (' + motivo + ')';
@@ -1147,6 +1190,14 @@ function recalc(){
   const btnLib = document.getElementById('btn-liberar-desconto');
   if(btnLib){
     btnLib.textContent = r.descontoLiberado ? '🔒 Retravar' : '🔓 Liberar';
+  }
+
+  // Aviso do valor mínimo da proposta
+  const avisoVal = document.getElementById('aviso-valor-min');
+  if(avisoVal){
+    avisoVal.textContent = r.descontoLiberado
+      ? 'Sem piso — desconto autorizado pelo administrador'
+      : 'Mínimo permitido: ' + brl(r.valorMinimoPermitido);
   }
 }
 function setText(id,txt){const el=document.getElementById(id); if(el) el.textContent=txt;}
@@ -1201,7 +1252,7 @@ function renderProposta(){
 
     <div class="proposta-total">
       <div>
-        <div style="font-size:.7rem;text-transform:uppercase;letter-spacing:.5px;color:#a9c8cf;">Valor Total da Proposta</div>
+        <div style="font-size:.7rem;text-transform:uppercase;letter-spacing:.5px;color:#a9cfb2;">Valor Total da Proposta</div>
         <div class="big">${brl(r.valorFinal)}</div>
       </div>
       <div style="text-align:right;font-size:.8rem;">
@@ -1217,16 +1268,26 @@ document.getElementById('btn-liberar-desconto').addEventListener('click', ()=>{
   if(nivelAcesso() !== 'admin'){ toast('Apenas administradores podem liberar o desconto.'); return; }
   if(state.financeiro.descontoLiberado){
     state.financeiro.descontoLiberado = false;
+    state.financeiro.descontoAutorizado = 0;
     const r = compute();
     if(n(state.financeiro.desconto) > r.descontoMaxPermitido){
       state.financeiro.desconto = Math.max(0, Number(r.descontoMaxPermitido.toFixed(2)));
       const el = document.getElementById('i-desconto');
       if(el) el.value = state.financeiro.desconto;
     }
+    if(state.financeiro.valorFinalManual != null){
+      const r2 = compute();
+      if(n(state.financeiro.valorFinalManual) < r2.valorMinimoPermitido){
+        state.financeiro.valorFinalManual = Number(r2.valorMinimoPermitido.toFixed(2));
+        const elv = document.getElementById('i-valorfinal');
+        if(elv) elv.value = state.financeiro.valorFinalManual;
+      }
+    }
     toast('Teto de desconto restaurado.');
   } else {
     state.financeiro.descontoLiberado = true;
-    toast('Desconto liberado nesta obra — a exceção fica gravada no orçamento.');
+    state.financeiro.descontoAutorizado = n(state.financeiro.desconto);
+    toast('Desconto de ' + num2(state.financeiro.descontoAutorizado) + '% autorizado e gravado nesta obra.');
   }
   recalc();
 });
@@ -1338,7 +1399,7 @@ function updateLoginUI(){
     lbl.textContent  = '✓ ' + (msAccount.name || msAccount.username);
     info.textContent = 'SharePoint: ' + SP_PASTA + '/' + HIST_FILENAME;
     info.style.display = 'block';
-    btn.style.background = 'rgba(76,122,63,.5)';
+    btn.style.background = 'rgba(255,255,255,.34)';
   } else {
     lbl.textContent  = '🔑 Entrar com Microsoft';
     info.style.display = 'none';
@@ -2304,7 +2365,7 @@ function renderAbaParametros(){
   globalParams.emailsAutorizados.forEach((email, i)=>{
     const div = document.createElement('div');
     div.style.cssText = 'display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--areia-escura);font-size:.88rem;';
-    div.innerHTML = `<span style="flex:1;">👤 ${email} <span style="font-size:.72rem;background:#e4eef1;color:var(--azul-claro);padding:1px 6px;border-radius:3px;font-weight:700;">ADMIN</span></span><button class="btn danger small" data-rem-email="${i}" type="button">remover</button>`;
+    div.innerHTML = `<span style="flex:1;">👤 ${email} <span style="font-size:.72rem;background:#e4f1e6;color:var(--azul-claro);padding:1px 6px;border-radius:3px;font-weight:700;">ADMIN</span></span><button class="btn danger small" data-rem-email="${i}" type="button">remover</button>`;
     wrap.appendChild(div);
   });
   wrap.querySelectorAll('button[data-rem-email]').forEach(btn=>{
