@@ -935,10 +935,20 @@ function bindSimpleInputs(){
   const elDesc = document.getElementById('i-desconto');
   if(elDesc && !elDesc._tetoLigado){
     elDesc._tetoLigado = true;
+    elDesc.addEventListener('focus', ()=>{ elDesc._aoFocar = elDesc.value; });
     elDesc.addEventListener('blur', ()=>{
       // Se a saída do campo foi para clicar em "Liberar", o valor digitado é
       // preservado — quem trata é o próprio botão
       if(window._liberandoDesconto) return;
+
+      // Mexeu no desconto: ele volta a comandar o valor final
+      if(elDesc._aoFocar !== undefined && elDesc._aoFocar !== elDesc.value){
+        if(state.financeiro.valorFinalManual != null){
+          state.financeiro.valorFinalManual = null;
+          const elv = document.getElementById('i-valorfinal');
+          if(elv) elv.value = '';
+        }
+      }
 
       const atual = n(state.financeiro.desconto);
 
@@ -972,21 +982,44 @@ function bindSimpleInputs(){
     });
   }
 
-  // Valor final: não pode cair abaixo do piso equivalente ao desconto máximo
+  // Valor final: aplica o piso e converte o valor digitado em desconto equivalente
   const elVF = document.getElementById('i-valorfinal');
   if(elVF && !elVF._pisoLigado){
     elVF._pisoLigado = true;
-    elVF.addEventListener('blur', ()=>{
+    elVF.addEventListener('blur', async ()=>{
       if(state.financeiro.valorFinalManual == null) return; // em branco = usa o sugerido
-      if(state.financeiro.descontoLiberado) return;         // exceção aprovada pelo admin
-      const r = compute();
-      const piso = r.valorMinimoPermitido;
-      if(n(state.financeiro.valorFinalManual) < piso){
-        state.financeiro.valorFinalManual = Number(piso.toFixed(2));
-        elVF.value = state.financeiro.valorFinalManual;
-        toast('Valor mínimo desta obra: ' + brl(piso) + ' (margem/desconto)');
-        recalc();
+
+      const liberado = !!state.financeiro.descontoLiberado;
+      let r = compute();
+
+      // Sem liberação, o valor não pode furar o piso da obra
+      if(!liberado){
+        const piso = r.valorMinimoPermitido;
+        if(n(state.financeiro.valorFinalManual) < piso){
+          state.financeiro.valorFinalManual = Number(piso.toFixed(2));
+          elVF.value = state.financeiro.valorFinalManual;
+          toast('Valor mínimo desta obra: ' + brl(piso) + ' (margem/desconto)');
+          r = compute();
+        }
       }
+
+      // Converte o valor final em desconto equivalente e grava na proposta
+      const base = r.valorSemDesconto;
+      const vf   = n(state.financeiro.valorFinalManual);
+      if(base > 0 && vf > 0){
+        let dImplicito = (1 - vf/base) * 100;
+        if(dImplicito < 0) dImplicito = 0;          // valor acima do cheio = sem desconto
+        dImplicito = Number(dImplicito.toFixed(2));
+        state.financeiro.desconto = dImplicito;
+        const elD = document.getElementById('i-desconto');
+        if(elD) elD.value = dImplicito;
+        if(liberado){
+          state.financeiro.descontoAutorizado = dImplicito;
+          toast('Valor final gravado — desconto equivalente: ' + num2(dImplicito) + '%');
+          if(state._histId) await gravarObraNoHistorico({ silencioso:true });
+        }
+      }
+      recalc();
     });
   }
 }
