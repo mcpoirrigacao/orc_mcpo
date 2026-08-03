@@ -433,8 +433,8 @@ function loadMsal(){
     <h2 class="pane-title no-print">Resumo &amp; Proposta Comercial</h2>
     <p class="pane-desc no-print">Defina a margem e o imposto para chegar ao valor da proposta. Use "Imprimir / Salvar PDF" para gerar o documento.</p>
 
-    <div id="alerta-custo-alterado" style="display:none;background:#fdf3e6;border:1px solid var(--ferrugem);border-left:5px solid var(--ferrugem);border-radius:6px;padding:14px 16px;margin-bottom:16px;">
-      <div style="font-weight:700;color:var(--ferrugem);font-size:.92rem;margin-bottom:6px;">⚠️ Custo alterado após a autorização do preço</div>
+    <div id="alerta-custo-alterado" class="no-print" style="display:none;background:#fdf3e6;border:1px solid var(--ferrugem);border-left:5px solid var(--ferrugem);border-radius:6px;padding:14px 16px;margin-bottom:16px;">
+      <div id="alerta-custo-titulo" style="font-weight:700;color:var(--ferrugem);font-size:.92rem;margin-bottom:8px;">⚠️ Custo alterado após a autorização do preço</div>
       <div id="alerta-custo-detalhe" style="font-size:.84rem;color:var(--texto);line-height:1.6;"></div>
     </div>
 
@@ -765,7 +765,7 @@ function defaultState(){
       {desc:'Técnico de Segurança', unidade:'mensal', qtd:0, valorTotal:0},
       {desc:'Insumos Adicionais', unidade:'un', qtd:0, valorTotal:0},
     ],
-    financeiro:{desconto:0, imposto:22.15, margem:20, margemMinima:15, descontoMaximo:10, descontoLiberado:false, descontoAutorizado:0, autorizadoPor:null, custoNaAutorizacao:null, margemNaAutorizacao:null, valorFinalManual:null},
+    financeiro:{desconto:0, imposto:22.15, margem:20, margemMinima:15, descontoMaximo:10, descontoLiberado:false, descontoAutorizado:0, autorizadoPor:null, custoNaAutorizacao:null, margemNaAutorizacao:null, valorNaAutorizacao:null, valorFinalManual:null},
     observacoes:'',
   };
 }
@@ -1205,9 +1205,14 @@ function compute(){
   // Custo registrado no momento em que o preço foi autorizado
   const custoNaAutorizacao  = state.financeiro.custoNaAutorizacao;
   const margemNaAutorizacao = state.financeiro.margemNaAutorizacao;
+  const valorNaAutorizacao  = state.financeiro.valorNaAutorizacao;
   const custoAlterado = !!(descontoLiberado && custoNaAutorizacao != null
                         && Math.abs(custoTotalObra - custoNaAutorizacao) > 0.01);
   const deltaCusto = custoAlterado ? (custoTotalObra - custoNaAutorizacao) : 0;
+  // Preço autorizado por percentual acompanha o custo; por valor fixo, não
+  const precoAlterado = !!(descontoLiberado && valorNaAutorizacao != null
+                        && Math.abs(valorFinal - valorNaAutorizacao) > 0.01);
+  const deltaPreco = precoAlterado ? (valorFinal - valorNaAutorizacao) : 0;
   // Piso do valor final: equivale ao maior desconto permitido nesta obra
   const valorMinimoPermitido = valorSemDesconto * (1 - descontoMaxPermitido/100);
 
@@ -1215,7 +1220,8 @@ function compute(){
     valorSugerido, valorFinal, impostoValor, lucro, margemReal, valorSemDesconto,
     descontoPorMargem, descontoTetoParam, descontoMaxPermitido, descontoLiberado,
     descontoAutorizado, valorMinimoPermitido, autorizadoPor,
-    custoNaAutorizacao, margemNaAutorizacao, custoAlterado, deltaCusto
+    custoNaAutorizacao, margemNaAutorizacao, valorNaAutorizacao,
+    custoAlterado, deltaCusto, precoAlterado, deltaPreco
   });
   return out;
 }
@@ -1327,24 +1333,55 @@ function recalc(){
       : 'Mínimo permitido: ' + brl(r.valorMinimoPermitido);
   }
 
-  // Alerta: custo mudou depois que o preço foi autorizado
+  // Alerta: custo (e possivelmente o preço) mudou depois da autorização
   const boxAlerta = document.getElementById('alerta-custo-alterado');
   const detAlerta = document.getElementById('alerta-custo-detalhe');
+  const tituloAlerta = document.getElementById('alerta-custo-titulo');
   if(boxAlerta && detAlerta){
-    if(r.custoAlterado){
+    if(r.custoAlterado || r.precoAlterado){
       const subiu = r.deltaCusto > 0;
-      const perda = (r.margemNaAutorizacao != null) ? (r.margemNaAutorizacao - r.margemReal) : null;
+      const linha = (rot, antes, agora, delta, cor) =>
+        '<tr>' +
+        '<td style="padding:3px 10px 3px 0;color:var(--texto-suave);">' + rot + '</td>' +
+        '<td style="padding:3px 10px 3px 0;text-align:right;font-family:var(--fonte-dado);">' + antes + '</td>' +
+        '<td style="padding:3px 10px 3px 0;text-align:right;font-family:var(--fonte-dado);font-weight:700;">' + agora + '</td>' +
+        '<td style="padding:3px 0;text-align:right;font-family:var(--fonte-dado);font-weight:700;color:' + cor + ';">' + delta + '</td>' +
+        '</tr>';
+
+      let linhas = '';
+      if(r.custoAlterado){
+        linhas += linha('Custo da obra', brl(r.custoNaAutorizacao), brl(r.custoTotalObra),
+                        (subiu?'+':'') + brl(r.deltaCusto), subiu ? 'var(--erro)' : 'var(--verde)');
+      }
+      if(r.precoAlterado){
+        linhas += linha('Preço ao cliente', brl(r.valorNaAutorizacao), brl(r.valorFinal),
+                        (r.deltaPreco>0?'+':'') + brl(r.deltaPreco),
+                        r.deltaPreco>0 ? 'var(--verde)' : 'var(--erro)');
+      }
+      if(r.margemNaAutorizacao != null){
+        const perda = r.margemNaAutorizacao - r.margemReal;
+        linhas += linha('Margem real', num2(r.margemNaAutorizacao)+'%', num2(r.margemReal)+'%',
+                        (Math.abs(perda) < 0.005 ? '—' : (perda>0?'−':'+') + num2(Math.abs(perda)) + ' p.p.'),
+                        perda > 0.005 ? 'var(--erro)' : 'var(--verde)');
+      }
+
+      // O preço só fica realmente fixo quando foi autorizado como valor
+      const conclusao = r.precoAlterado
+        ? 'O preço foi autorizado como <b>percentual de desconto</b>, então ele acompanhou a mudança de custo — o valor ao cliente <b>não é mais o mesmo</b> que foi aprovado. Confirme com o administrador antes de enviar a proposta.'
+        : 'O preço ao cliente segue o valor aprovado; a alteração afetou apenas a rentabilidade. Revise com o administrador se a margem não se sustentar.';
+
+      tituloAlerta.textContent = r.precoAlterado
+        ? '⚠️ Preço e custo mudaram após a autorização'
+        : '⚠️ Custo alterado após a autorização do preço';
+
       detAlerta.innerHTML =
-        'Custo na autorização: <b>' + brl(r.custoNaAutorizacao) + '</b><br>' +
-        'Custo atual: <b>' + brl(r.custoTotalObra) + '</b> ' +
-        '<span style="color:' + (subiu ? 'var(--erro)' : 'var(--verde)') + ';font-weight:700;">(' +
-        (subiu ? '+' : '') + brl(r.deltaCusto) + ')</span><br>' +
-        'Margem real agora: <b>' + num2(r.margemReal) + '%</b>' +
-        (r.margemNaAutorizacao != null
-          ? ' — era <b>' + num2(r.margemNaAutorizacao) + '%</b> quando foi autorizado' +
-            (perda > 0.005 ? ' <span style="color:var(--erro);font-weight:700;">(−' + num2(perda) + ' p.p.)</span>' : '')
-          : '') +
-        '<br><span style="color:var(--texto-suave);font-size:.8rem;">O preço autorizado continua valendo. Revise com o administrador se a rentabilidade não se sustentar.</span>';
+        '<table style="border-collapse:collapse;font-size:.84rem;margin-bottom:8px;">' +
+        '<tr><td></td>' +
+        '<th style="text-align:right;padding:0 10px 4px 0;font-size:.68rem;text-transform:uppercase;color:var(--texto-suave);">Na autorização</th>' +
+        '<th style="text-align:right;padding:0 10px 4px 0;font-size:.68rem;text-transform:uppercase;color:var(--texto-suave);">Agora</th>' +
+        '<th style="text-align:right;padding:0 0 4px;font-size:.68rem;text-transform:uppercase;color:var(--texto-suave);">Variação</th></tr>' +
+        linhas + '</table>' +
+        '<span style="color:var(--texto-suave);font-size:.8rem;">' + conclusao + '</span>';
       boxAlerta.style.display = 'block';
     } else {
       boxAlerta.style.display = 'none';
@@ -1442,6 +1479,7 @@ document.getElementById('btn-liberar-desconto').addEventListener('click', async 
     state.financeiro.autorizadoPor = null;
     state.financeiro.custoNaAutorizacao = null;
     state.financeiro.margemNaAutorizacao = null;
+    state.financeiro.valorNaAutorizacao = null;
     const r = compute();
     if(n(state.financeiro.desconto) > r.descontoMaxPermitido){
       state.financeiro.desconto = Math.max(0, Number(r.descontoMaxPermitido.toFixed(2)));
@@ -1496,6 +1534,7 @@ document.getElementById('btn-liberar-desconto').addEventListener('click', async 
   const snap = compute();
   state.financeiro.custoNaAutorizacao  = snap.custoTotalObra;
   state.financeiro.margemNaAutorizacao = snap.margemReal;
+  state.financeiro.valorNaAutorizacao  = snap.valorFinal;
   if(elDescLib) elDescLib.value = digitado;
   if(usarValorFinal && elVFLib) elVFLib.value = state.financeiro.valorFinalManual;
   recalc();
@@ -2042,9 +2081,10 @@ async function renderHistorico(filtro=''){
           }
           return '';
         })()}
-        ${r_item.custoAlterado ? `
+        ${(r_item.custoAlterado || r_item.precoAlterado) ? `
         <span style="display:block;margin-top:3px;font-size:.78rem;color:var(--erro);font-weight:700;">
-          ⚠️ Custo alterado após a autorização (${r_item.deltaCusto > 0 ? '+' : ''}${brl(r_item.deltaCusto)})
+          ⚠️ ${r_item.precoAlterado ? 'Preço mudou após a autorização' : 'Custo alterado após a autorização'}
+          ${r_item.custoAlterado ? ` (custo ${r_item.deltaCusto > 0 ? '+' : ''}${brl(r_item.deltaCusto)})` : ''}
         </span>` : ''}
       </div>
       <div class="actions" style="flex-wrap:wrap;gap:6px;">
