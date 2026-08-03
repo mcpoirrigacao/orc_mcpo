@@ -936,6 +936,7 @@ function bindSimpleInputs(){
   if(elDesc && !elDesc._tetoLigado){
     elDesc._tetoLigado = true;
     elDesc.addEventListener('focus', ()=>{ elDesc._aoFocar = elDesc.value; });
+    elDesc.addEventListener('input', ()=>{ window._ultimoCampoPreco = 'desconto'; });
     elDesc.addEventListener('blur', ()=>{
       // Se a saída do campo foi para clicar em "Liberar", o valor digitado é
       // preservado — quem trata é o próprio botão
@@ -986,8 +987,11 @@ function bindSimpleInputs(){
   const elVF = document.getElementById('i-valorfinal');
   if(elVF && !elVF._pisoLigado){
     elVF._pisoLigado = true;
+    elVF.addEventListener('input', ()=>{ window._ultimoCampoPreco = 'valorfinal'; });
     elVF.addEventListener('blur', async ()=>{
       if(state.financeiro.valorFinalManual == null) return; // em branco = usa o sugerido
+      // Saindo do campo para clicar em "Liberar": preserva o digitado
+      if(window._liberandoDesconto) return;
 
       const liberado = !!state.financeiro.descontoLiberado;
       let r = compute();
@@ -1367,9 +1371,25 @@ document.getElementById('btn-liberar-desconto').addEventListener('click', async 
     return;
   }
 
-  // Lê o valor que está no campo — inclusive o que o admin acabou de digitar
+  // O que o admin acabou de digitar comanda a autorização:
+  // se mexeu no valor final, ele é a referência; senão, vale o desconto.
   const elDescLib = document.getElementById('i-desconto');
-  const digitado = Math.max(0, n(elDescLib ? elDescLib.value : state.financeiro.desconto));
+  const elVFLib   = document.getElementById('i-valorfinal');
+  const vfDigitado = elVFLib ? elVFLib.value.trim() : '';
+  const usarValorFinal = (window._ultimoCampoPreco === 'valorfinal') && vfDigitado !== '';
+
+  let digitado; // desconto resultante
+
+  if(usarValorFinal){
+    const vf = n(vfDigitado);
+    state.financeiro.valorFinalManual = vf;
+    const base = compute().valorSemDesconto;
+    let d = (base > 0) ? (1 - vf/base) * 100 : 0;
+    if(d < 0) d = 0;
+    digitado = Number(d.toFixed(2));
+  } else {
+    digitado = Math.max(0, n(elDescLib ? elDescLib.value : state.financeiro.desconto));
+  }
 
   state.financeiro.desconto           = digitado;
   state.financeiro.descontoLiberado   = true;
@@ -1380,16 +1400,20 @@ document.getElementById('btn-liberar-desconto').addEventListener('click', async 
     em: Date.now(),
   };
   if(elDescLib) elDescLib.value = digitado;
+  if(usarValorFinal && elVFLib) elVFLib.value = state.financeiro.valorFinalManual;
   recalc();
+
+  const resumo = usarValorFinal
+    ? 'Valor de ' + brl(state.financeiro.valorFinalManual) + ' autorizado (desconto de ' + num2(digitado) + '%)'
+    : 'Desconto de ' + num2(digitado) + '% autorizado';
 
   // Grava na obra que está aberta — sem criar registro novo
   if(state._histId){
     const ok = await gravarObraNoHistorico({ silencioso:true });
-    toast(ok
-      ? 'Desconto de ' + num2(digitado) + '% autorizado e gravado na obra.'
-      : 'Autorizado, mas não foi possível gravar no histórico agora.');
+    toast(ok ? resumo + ' e gravado na obra.'
+             : resumo + ', mas não foi possível gravar no histórico agora.');
   } else {
-    toast('Desconto de ' + num2(digitado) + '% autorizado — salve a obra para registrar.');
+    toast(resumo + ' — salve a obra para registrar.');
   }
 });
 
