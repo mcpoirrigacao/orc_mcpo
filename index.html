@@ -274,6 +274,7 @@ function loadMsal(){
     <button data-tab="custos">Custos Gerais</button>
     <button data-tab="proposta">Resumo &amp; Proposta</button>
     <button data-tab="historico">Histórico</button>
+    <button data-tab="lixeira" id="tab-lixeira" style="display:none;">🗑 Lixeira</button>
     <button data-tab="parametros" id="tab-parametros" style="display:none;">⚙ Parâmetros</button>
   </nav>
 </header>
@@ -524,6 +525,21 @@ function loadMsal(){
     </div>
 
     <div id="hist-list"></div>
+  </section>
+
+  <!-- ================= ABA: LIXEIRA ================= -->
+  <section class="pane" id="pane-lixeira">
+    <h2 class="pane-title">🗑 Lixeira</h2>
+    <p class="pane-desc">Obras excluídas por qualquer membro da equipe. Restaure para o dono original ou apague em definitivo.</p>
+
+    <div class="card" style="padding:12px 14px;">
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+        <input type="text" id="lix-busca" placeholder="Buscar por cliente, obra ou dono..." style="flex:1;min-width:200px;border:1px solid var(--borda);border-radius:4px;padding:8px 10px;font-size:.88rem;background:#fffdf9;">
+        <button class="btn ghost" id="btn-atualizar-lixeira" type="button">Atualizar</button>
+      </div>
+    </div>
+
+    <div id="lix-list"></div>
   </section>
 
   <!-- ================= ABA: PARÂMETROS ================= -->
@@ -920,6 +936,10 @@ function bindSimpleInputs(){
   if(elDesc && !elDesc._tetoLigado){
     elDesc._tetoLigado = true;
     elDesc.addEventListener('blur', ()=>{
+      // Se a saída do campo foi para clicar em "Liberar", o valor digitado é
+      // preservado — quem trata é o próprio botão
+      if(window._liberandoDesconto) return;
+
       const atual = n(state.financeiro.desconto);
 
       if(state.financeiro.descontoLiberado){
@@ -1269,7 +1289,23 @@ function renderProposta(){
 document.getElementById('btn-print').addEventListener('click', ()=>{ renderProposta(); window.print(); });
 
 // Admin libera (ou retrava) o teto de desconto nesta obra — fica gravado no orçamento
+/* Sinaliza a intenção de liberar ANTES do blur do campo de desconto,
+   para que o teto não corte o valor que o admin acabou de digitar. */
+window._liberandoDesconto = false;
+(function(){
+  const btn = document.getElementById('btn-liberar-desconto');
+  if(!btn) return;
+  const marcar = ()=>{ window._liberandoDesconto = true; };
+  btn.addEventListener('mousedown', marcar);
+  btn.addEventListener('touchstart', marcar, { passive:true });
+  // Se o clique não se concretizar (arrastou para fora), limpa a marca
+  document.addEventListener('mouseup', ()=>{
+    setTimeout(()=>{ window._liberandoDesconto = false; }, 0);
+  });
+})();
+
 document.getElementById('btn-liberar-desconto').addEventListener('click', async ()=>{
+  window._liberandoDesconto = false;
   if(nivelAcesso() !== 'admin'){ toast('Apenas administradores podem liberar o desconto.'); return; }
 
   if(state.financeiro.descontoLiberado){
@@ -1298,23 +1334,29 @@ document.getElementById('btn-liberar-desconto').addEventListener('click', async 
     return;
   }
 
-  state.financeiro.descontoLiberado  = true;
-  state.financeiro.descontoAutorizado = n(state.financeiro.desconto);
+  // Lê o valor que está no campo — inclusive o que o admin acabou de digitar
+  const elDescLib = document.getElementById('i-desconto');
+  const digitado = Math.max(0, n(elDescLib ? elDescLib.value : state.financeiro.desconto));
+
+  state.financeiro.desconto           = digitado;
+  state.financeiro.descontoLiberado   = true;
+  state.financeiro.descontoAutorizado = digitado;
   state.financeiro.autorizadoPor = {
     nome: msAccount ? (msAccount.name || msAccount.username) : '',
     email: msAccount ? (msAccount.username || '') : '',
     em: Date.now(),
   };
+  if(elDescLib) elDescLib.value = digitado;
   recalc();
 
   // Grava na obra que está aberta — sem criar registro novo
   if(state._histId){
     const ok = await gravarObraNoHistorico({ silencioso:true });
     toast(ok
-      ? 'Desconto de ' + num2(state.financeiro.descontoAutorizado) + '% autorizado e gravado na obra.'
+      ? 'Desconto de ' + num2(digitado) + '% autorizado e gravado na obra.'
       : 'Autorizado, mas não foi possível gravar no histórico agora.');
   } else {
-    toast('Desconto de ' + num2(state.financeiro.descontoAutorizado) + '% autorizado — salve a obra para registrar.');
+    toast('Desconto de ' + num2(digitado) + '% autorizado — salve a obra para registrar.');
   }
 });
 
@@ -1594,30 +1636,61 @@ async function listarArquivosHistorico(){
   }catch(e){ return []; }
 }
 
+/* Lê todos os arquivos de histórico da pasta (admin) — inclui excluídos */
+async function loadTodosRegistros(){
+  const arquivos = await listarArquivosHistorico();
+  if(!arquivos.length) return [];
+  const token = await getGraphToken();
+  if(!token) return [];
+  const todos = await Promise.all(arquivos.map(async filename=>{
+    const base = await spDriveUrl(spPath(filename));
+    if(!base) return [];
+    const r = await fetch(base + ':/content', { headers:{ Authorization: 'Bearer ' + token } });
+    if(!r.ok) return [];
+    try{ return JSON.parse(await r.text()); }catch(e){ return []; }
+  }));
+  return todos.flat();
+}
+
 async function loadHistorico(){
   if(msAccount){
     const nivel = nivelAcesso();
+    let lista;
     if(nivel === 'admin'){
-      try{
-        const arquivos = await listarArquivosHistorico();
-        if(!arquivos.length) return [];
-        const todos = await Promise.all(arquivos.map(async filename=>{
-          const token = await getGraphToken();
-          if(!token) return [];
-          const base = await spDriveUrl(spPath(filename));
-          if(!base) return [];
-          const r = await fetch(base + ':/content', { headers:{ Authorization: 'Bearer ' + token } });
-          if(!r.ok) return [];
-          try{ return JSON.parse(await r.text()); }catch(e){ return []; }
-        }));
-        return todos.flat();
-      }catch(e){ console.warn('loadHistorico admin error:', e); return []; }
+      try{ lista = await loadTodosRegistros(); }
+      catch(e){ console.warn('loadHistorico admin error:', e); lista = []; }
     } else {
-      return await loadHistoricoDeEmail(emailUsuarioAtual());
+      lista = await loadHistoricoDeEmail(emailUsuarioAtual());
     }
+    return lista.filter(x => !x.excluido); // excluídos ficam só na Lixeira
   }
-  try{ const r = localStorage.getItem(HIST_KEY_LOCAL); return r ? JSON.parse(r) : []; }
-  catch(e){ return []; }
+  try{
+    const r = localStorage.getItem(HIST_KEY_LOCAL);
+    return r ? JSON.parse(r).filter(x=>!x.excluido) : [];
+  }catch(e){ return []; }
+}
+
+/* Somente admin: obras na lixeira, de toda a equipe */
+async function loadLixeira(){
+  if(nivelAcesso() !== 'admin') return [];
+  if(msAccount){
+    try{ return (await loadTodosRegistros()).filter(x => x.excluido); }
+    catch(e){ return []; }
+  }
+  try{
+    const r = localStorage.getItem(HIST_KEY_LOCAL);
+    return r ? JSON.parse(r).filter(x=>x.excluido) : [];
+  }catch(e){ return []; }
+}
+
+/* Grava a lista completa (com excluídos) no arquivo de um dono */
+async function gravarArquivoDe(email, lista){
+  const json = JSON.stringify(lista, null, 2);
+  if(msAccount){
+    await ensureFolder();
+    return await graphPut(spPath(emailParaFilename(email)), new TextEncoder().encode(json));
+  }
+  try{ localStorage.setItem(HIST_KEY_LOCAL, json); return true; }catch(e){ return false; }
 }
 
 async function saveHistorico(list){
@@ -1732,29 +1805,131 @@ async function renderHistorico(filtro=''){
   });
   wrap.querySelectorAll('button[data-del]').forEach(btn=>{
     btn.addEventListener('click', async ()=>{
-      if(!confirm('Excluir esta obra do histórico?')) return;
-      const emailDono = btn.dataset.delEmail || emailUsuarioAtual();
-      // Carregar o arquivo do dono da obra e remover apenas ela
-      let lista;
-      if(msAccount && emailDono !== emailUsuarioAtual()){
-        lista = await loadHistoricoDeEmail(emailDono);
-      } else {
-        lista = await loadHistoricoDeEmail(emailUsuarioAtual());
-      }
-      lista = lista.filter(x=>x.id!==btn.dataset.del);
-      // Salvar no arquivo do dono
-      const json = JSON.stringify(lista, null, 2);
-      if(msAccount){
-        await ensureFolder();
-        await graphPut(spPath(emailParaFilename(emailDono)), new TextEncoder().encode(json));
-      }
-      // Recarregar cache e re-render
+      if(!confirm('Enviar esta obra para a lixeira?')) return;
+      const emailDono = (btn.dataset.delEmail || emailUsuarioAtual()).toLowerCase();
+      const lista = await loadHistoricoDeEmail(emailDono);
+      const idx = lista.findIndex(x=>x.id===btn.dataset.del);
+      if(idx < 0){ toast('Registro não encontrado.'); return; }
+      // Marca como excluído — o registro permanece no arquivo do dono
+      lista[idx].excluido = true;
+      lista[idx].excluidoPor = {
+        nome: msAccount ? (msAccount.name || msAccount.username) : 'Não identificado',
+        email: emailUsuarioAtual(),
+        em: Date.now(),
+      };
+      const ok = await gravarArquivoDe(emailDono, lista);
       _histCache = _histCache.filter(x=>x.id!==btn.dataset.del);
       renderHistorico(document.getElementById('hist-busca').value);
-      toast('Obra excluída');
+      toast(ok ? 'Obra enviada para a lixeira.' : 'Não foi possível excluir agora.');
     });
   });
 }
+
+/* ============================================================
+   LIXEIRA — somente admin
+   ============================================================ */
+let _lixCache = [];
+
+async function renderLixeira(filtro=''){
+  const wrap = document.getElementById('lix-list');
+  if(!wrap) return;
+  if(nivelAcesso() !== 'admin'){
+    wrap.innerHTML = '<div class="empty-state">Acesso restrito a administradores.</div>';
+    return;
+  }
+  wrap.innerHTML = '<div class="empty-state">Carregando lixeira...</div>';
+  _lixCache = await loadLixeira();
+
+  const busca = filtro.toLowerCase().trim();
+  let lista = _lixCache.slice().sort((a,b)=>(b.excluidoPor?.em||0)-(a.excluidoPor?.em||0));
+  if(busca){
+    lista = lista.filter(item=>
+      (item.data.info.cliente||'').toLowerCase().includes(busca) ||
+      (item.data.info.obra||'').toLowerCase().includes(busca) ||
+      ((item.savedBy||{}).nome||'').toLowerCase().includes(busca) ||
+      ((item.savedBy||{}).email||'').toLowerCase().includes(busca)
+    );
+  }
+
+  if(!_lixCache.length){
+    wrap.innerHTML = '<div class="empty-state">A lixeira está vazia.</div>';
+    return;
+  }
+  if(!lista.length){
+    wrap.innerHTML = '<div class="empty-state">Nenhuma obra encontrada para "'+escapeHtml(filtro)+'".</div>';
+    return;
+  }
+
+  wrap.innerHTML = '';
+  lista.forEach(item=>{
+    const r_item = computeFromState(item.data);
+    const dono = item.savedBy || {};
+    const exc  = item.excluidoPor || {};
+    const div = document.createElement('div');
+    div.className = 'hist-item';
+    div.style.borderLeft = '4px solid var(--erro)';
+    div.innerHTML = `
+      <div class="info">
+        <b>${escapeHtml(item.data.info.cliente || 'Cliente não informado')} — ${escapeHtml(item.data.info.obra || 'Obra sem nome')}</b>
+        <span style="display:block;margin-top:2px;">
+          Dono: <b>${escapeHtml(dono.nome || dono.email || 'Não identificado')}</b>
+          &nbsp;·&nbsp; Salva em ${item.savedAt ? new Date(item.savedAt).toLocaleString('pt-BR') : '—'}
+        </span>
+        <span style="display:block;margin-top:2px;color:var(--erro);font-size:.78rem;font-weight:600;">
+          🗑 Excluída por ${escapeHtml(exc.nome || exc.email || 'Não identificado')}
+          ${exc.em ? ' em ' + new Date(exc.em).toLocaleString('pt-BR') : ''}
+        </span>
+        <span style="display:block;margin-top:4px;font-size:.82rem;">
+          Custo: <b>${brl(r_item.custoTotalObra)}</b>
+          &nbsp;&nbsp; Valor Proposta: <b style="color:var(--ferrugem)">${brl(r_item.valorFinal)}</b>
+        </span>
+      </div>
+      <div class="actions" style="flex-wrap:wrap;gap:6px;">
+        <button class="btn ghost small" data-lix-restaurar="${item.id}" data-dono="${escapeHtml((dono.email||'').toLowerCase())}" type="button">↩ Restaurar</button>
+        <button class="btn danger small" data-lix-apagar="${item.id}" data-dono="${escapeHtml((dono.email||'').toLowerCase())}" type="button">Excluir definitivo</button>
+      </div>`;
+    wrap.appendChild(div);
+  });
+
+  // Restaurar para o dono original
+  wrap.querySelectorAll('button[data-lix-restaurar]').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      const id = btn.dataset.lixRestaurar;
+      const dono = btn.dataset.dono || emailUsuarioAtual();
+      const lista = await loadHistoricoDeEmail(dono);
+      const idx = lista.findIndex(x=>x.id===id);
+      if(idx < 0){ toast('Registro não encontrado.'); return; }
+      delete lista[idx].excluido;
+      delete lista[idx].excluidoPor;
+      lista[idx].restauradoPor = {
+        nome: msAccount ? (msAccount.name || msAccount.username) : '',
+        email: emailUsuarioAtual(),
+        em: Date.now(),
+      };
+      const ok = await gravarArquivoDe(dono, lista);
+      toast(ok ? 'Obra restaurada para ' + (lista[idx].savedBy?.nome || dono) + '.' : 'Falha ao restaurar.');
+      renderLixeira(document.getElementById('lix-busca').value);
+    });
+  });
+
+  // Excluir definitivamente
+  wrap.querySelectorAll('button[data-lix-apagar]').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      if(!confirm('Excluir esta obra DEFINITIVAMENTE? Esta ação não pode ser desfeita.')) return;
+      const id = btn.dataset.lixApagar;
+      const dono = btn.dataset.dono || emailUsuarioAtual();
+      let lista = await loadHistoricoDeEmail(dono);
+      lista = lista.filter(x=>x.id!==id);
+      const ok = await gravarArquivoDe(dono, lista);
+      toast(ok ? 'Obra excluída definitivamente.' : 'Falha ao excluir.');
+      renderLixeira(document.getElementById('lix-busca').value);
+    });
+  });
+}
+
+document.getElementById('lix-busca').addEventListener('input', e=>renderLixeira(e.target.value));
+document.getElementById('btn-atualizar-lixeira').addEventListener('click', ()=>renderLixeira(document.getElementById('lix-busca').value));
+document.querySelector('nav.tabs button[data-tab="lixeira"]').addEventListener('click', ()=>renderLixeira());
 
 document.getElementById('hist-busca').addEventListener('input', e=>{
   renderHistorico(e.target.value);
@@ -2307,7 +2482,7 @@ function aplicarControleAcesso(){
   }
   overlayLogin.style.display = 'none';
   // Habilita abas normais — aba parâmetros tratada separadamente abaixo
-  document.querySelectorAll('nav.tabs button:not(#tab-parametros)').forEach(b=>b.disabled=false);
+  document.querySelectorAll('nav.tabs button:not(#tab-parametros):not(#tab-lixeira)').forEach(b=>b.disabled=false);
 
   // 2 — Logado mas bloqueado
   if(nivel === 'bloqueado'){
@@ -2320,26 +2495,25 @@ function aplicarControleAcesso(){
   // Classe no body controla a visibilidade de todos os elementos .somente-admin
   document.body.classList.toggle('is-admin', nivel === 'admin');
 
-  // Aba parâmetros: SOMENTE admin — nunca comum, nunca deslogado
-  const tabParam = document.getElementById('tab-parametros');
-  if(tabParam){
+  // Abas restritas ao admin: Parâmetros e Lixeira
+  [['tab-parametros','pane-parametros'], ['tab-lixeira','pane-lixeira']].forEach(([idTab, idPane])=>{
+    const tb = document.getElementById(idTab);
+    if(!tb) return;
     const isAdmin = nivel === 'admin';
-    tabParam.style.display = isAdmin ? '' : 'none';
-    tabParam.disabled = !isAdmin;
-    tabParam.onclick = isAdmin ? null : (e)=>{
+    tb.style.display = isAdmin ? '' : 'none';
+    tb.disabled = !isAdmin;
+    tb.onclick = isAdmin ? null : (e)=>{
       e.preventDefault(); e.stopPropagation();
       toast('Acesso restrito a administradores.');
       return false;
     };
-  }
-
-  // Se não-admin estiver na aba parâmetros, redireciona para obra
-  if(nivel !== 'admin'){
-    const paneParam = document.getElementById('pane-parametros');
-    if(paneParam && paneParam.classList.contains('active')){
-      document.querySelector('nav.tabs button[data-tab="obra"]').click();
+    if(!isAdmin){
+      const pn = document.getElementById(idPane);
+      if(pn && pn.classList.contains('active')){
+        document.querySelector('nav.tabs button[data-tab="obra"]').click();
+      }
     }
-  }
+  });
 
   // 4 — Campos de parâmetro nas abas normais — sempre bloqueados para todos
   PARAM_FIELD_IDS.forEach(id=>{
