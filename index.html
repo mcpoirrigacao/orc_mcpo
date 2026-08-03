@@ -717,7 +717,7 @@ function defaultState(){
       {desc:'Técnico de Segurança', unidade:'mensal', qtd:0, valorTotal:0},
       {desc:'Insumos Adicionais', unidade:'un', qtd:0, valorTotal:0},
     ],
-    financeiro:{desconto:0, imposto:22.15, margem:20, margemMinima:15, descontoMaximo:10, descontoLiberado:false, descontoAutorizado:0, valorFinalManual:null},
+    financeiro:{desconto:0, imposto:22.15, margem:20, margemMinima:15, descontoMaximo:10, descontoLiberado:false, descontoAutorizado:0, autorizadoPor:null, valorFinalManual:null},
     observacoes:'',
   };
 }
@@ -1108,13 +1108,14 @@ function compute(){
   const descontoMaxPermitido = Math.min(descontoTetoParam, descontoPorMargem);
   const descontoLiberado = !!state.financeiro.descontoLiberado;
   const descontoAutorizado = n(state.financeiro.descontoAutorizado);
+  const autorizadoPor = state.financeiro.autorizadoPor || null;
   // Piso do valor final: equivale ao maior desconto permitido nesta obra
   const valorMinimoPermitido = valorSemDesconto * (1 - descontoMaxPermitido/100);
 
   Object.assign(out,{
     valorSugerido, valorFinal, impostoValor, lucro, margemReal, valorSemDesconto,
     descontoPorMargem, descontoTetoParam, descontoMaxPermitido, descontoLiberado,
-    descontoAutorizado, valorMinimoPermitido
+    descontoAutorizado, valorMinimoPermitido, autorizadoPor
   });
   return out;
 }
@@ -1180,8 +1181,12 @@ function recalc(){
   const avisoDesc = document.getElementById('aviso-desconto-max');
   if(avisoDesc){
     if(r.descontoLiberado){
-      avisoDesc.innerHTML = '<span style="color:var(--ferrugem);font-weight:700;">🔓 Autorizado pelo administrador: '
-        + num2(r.descontoAutorizado) + '%</span>';
+      const quem = r.autorizadoPor
+        ? ' por ' + (r.autorizadoPor.nome || r.autorizadoPor.email)
+          + (r.autorizadoPor.em ? ' em ' + new Date(r.autorizadoPor.em).toLocaleDateString('pt-BR') : '')
+        : '';
+      avisoDesc.innerHTML = '<span style="color:var(--ferrugem);font-weight:700;">🔓 Desconto de '
+        + num2(r.descontoAutorizado) + '% autorizado' + escapeHtml(quem) + '</span>';
     } else {
       const motivo = (r.descontoPorMargem < r.descontoTetoParam) ? 'margem mínima' : 'política';
       avisoDesc.textContent = 'Máximo nesta obra: ' + num2(r.descontoMaxPermitido) + '% (' + motivo + ')';
@@ -1264,32 +1269,53 @@ function renderProposta(){
 document.getElementById('btn-print').addEventListener('click', ()=>{ renderProposta(); window.print(); });
 
 // Admin libera (ou retrava) o teto de desconto nesta obra — fica gravado no orçamento
-document.getElementById('btn-liberar-desconto').addEventListener('click', ()=>{
+document.getElementById('btn-liberar-desconto').addEventListener('click', async ()=>{
   if(nivelAcesso() !== 'admin'){ toast('Apenas administradores podem liberar o desconto.'); return; }
+
   if(state.financeiro.descontoLiberado){
     state.financeiro.descontoLiberado = false;
     state.financeiro.descontoAutorizado = 0;
+    state.financeiro.autorizadoPor = null;
     const r = compute();
     if(n(state.financeiro.desconto) > r.descontoMaxPermitido){
       state.financeiro.desconto = Math.max(0, Number(r.descontoMaxPermitido.toFixed(2)));
       const el = document.getElementById('i-desconto');
       if(el) el.value = state.financeiro.desconto;
     }
-    if(state.financeiro.valorFinalManual != null){
-      const r2 = compute();
-      if(n(state.financeiro.valorFinalManual) < r2.valorMinimoPermitido){
-        state.financeiro.valorFinalManual = Number(r2.valorMinimoPermitido.toFixed(2));
-        const elv = document.getElementById('i-valorfinal');
-        if(elv) elv.value = state.financeiro.valorFinalManual;
-      }
+    const r2 = compute();
+    if(state.financeiro.valorFinalManual != null && n(state.financeiro.valorFinalManual) < r2.valorMinimoPermitido){
+      state.financeiro.valorFinalManual = Number(r2.valorMinimoPermitido.toFixed(2));
+      const elv = document.getElementById('i-valorfinal');
+      if(elv) elv.value = state.financeiro.valorFinalManual;
     }
-    toast('Teto de desconto restaurado.');
-  } else {
-    state.financeiro.descontoLiberado = true;
-    state.financeiro.descontoAutorizado = n(state.financeiro.desconto);
-    toast('Desconto de ' + num2(state.financeiro.descontoAutorizado) + '% autorizado e gravado nesta obra.');
+    recalc();
+    if(state._histId){
+      const ok = await gravarObraNoHistorico({ silencioso:true });
+      toast(ok ? 'Autorização removida e gravada na obra.' : 'Autorização removida (falha ao gravar).');
+    } else {
+      toast('Teto de desconto restaurado.');
+    }
+    return;
   }
+
+  state.financeiro.descontoLiberado  = true;
+  state.financeiro.descontoAutorizado = n(state.financeiro.desconto);
+  state.financeiro.autorizadoPor = {
+    nome: msAccount ? (msAccount.name || msAccount.username) : '',
+    email: msAccount ? (msAccount.username || '') : '',
+    em: Date.now(),
+  };
   recalc();
+
+  // Grava na obra que está aberta — sem criar registro novo
+  if(state._histId){
+    const ok = await gravarObraNoHistorico({ silencioso:true });
+    toast(ok
+      ? 'Desconto de ' + num2(state.financeiro.descontoAutorizado) + '% autorizado e gravado na obra.'
+      : 'Autorizado, mas não foi possível gravar no histórico agora.');
+  } else {
+    toast('Desconto de ' + num2(state.financeiro.descontoAutorizado) + '% autorizado — salve a obra para registrar.');
+  }
 });
 
 /* ============================================================
@@ -1663,6 +1689,13 @@ async function renderHistorico(filtro=''){
           &nbsp;&nbsp; Valor Proposta: <b style="color:var(--ferrugem)">${brl(r_item.valorFinal)}</b>
           &nbsp;&nbsp; Margem Real: <b>${num2(r_item.margemReal)}%</b>
         </span>
+        ${item.data.financeiro && item.data.financeiro.descontoLiberado ? `
+        <span style="display:block;margin-top:4px;font-size:.78rem;color:var(--ferrugem);font-weight:700;">
+          🔓 Desconto de ${num2(item.data.financeiro.descontoAutorizado)}% autorizado${
+            item.data.financeiro.autorizadoPor
+              ? ' por ' + escapeHtml(item.data.financeiro.autorizadoPor.nome || item.data.financeiro.autorizadoPor.email)
+              : ''}
+        </span>` : ''}
       </div>
       <div class="actions" style="flex-wrap:wrap;gap:6px;">
         <button class="btn ghost small" data-open="${item.id}" type="button">Abrir</button>
@@ -1727,44 +1760,72 @@ document.getElementById('hist-busca').addEventListener('input', e=>{
   renderHistorico(e.target.value);
 });
 
-document.getElementById('btn-save-hist').addEventListener('click', async ()=>{
+/* Grava a obra no arquivo do DONO ORIGINAL (não no de quem está editando).
+   Assim, quando o admin edita a obra de um vendedor, a alteração aparece
+   para o próprio vendedor em vez de virar uma cópia no arquivo do admin. */
+async function gravarObraNoHistorico({ silencioso = false } = {}){
   const r = LAST || compute();
-  const list = msAccount
-    ? await loadHistoricoDeEmail(emailUsuarioAtual())
-    : (()=>{ try{ const x=localStorage.getItem(HIST_KEY_LOCAL); return x?JSON.parse(x):[]; }catch(e){ return []; } })();
-  const savedBy = msAccount
-    ? { nome: msAccount.name || '', email: msAccount.username || '' }
+  const histId = state._histId || null;
+  const eu = msAccount
+    ? { nome: msAccount.name || '', email: (msAccount.username || '').toLowerCase() }
     : { nome: 'Não identificado', email: '' };
 
-  const histId = state._histId || null;
-  const novoRegistro = {
+  // Dono do registro: quem salvou originalmente, ou eu se for obra nova
+  const dono = (histId && state._histSavedBy && state._histSavedBy.email)
+    ? state._histSavedBy
+    : eu;
+  const donoEmail = (dono.email || '').toLowerCase();
+  const editandoDeOutro = !!(donoEmail && donoEmail !== eu.email);
+
+  // Carrega o arquivo do dono
+  const list = msAccount
+    ? await loadHistoricoDeEmail(donoEmail || eu.email)
+    : (()=>{ try{ const x=localStorage.getItem(HIST_KEY_LOCAL); return x?JSON.parse(x):[]; }catch(e){ return []; } })();
+
+  const registro = {
     id: histId || ('obra-'+Date.now()+'-'+Math.random().toString(36).slice(2,7)),
     savedAt: Date.now(),
-    savedBy,
+    savedBy: dono,                              // a obra continua sendo do autor original
+    ultimaEdicao: { ...eu, em: Date.now() },    // rastro de quem alterou por último
     valorFinal: r.valorFinal,
     data: JSON.parse(JSON.stringify(state)),
   };
-  // Remover _histId e _histSavedBy do data salvo
-  delete novoRegistro.data._histId;
-  delete novoRegistro.data._histSavedBy;
+  delete registro.data._histId;
+  delete registro.data._histSavedBy;
 
   if(histId){
-    // Sobrescrever registro existente
     const idx = list.findIndex(x=>x.id===histId);
-    if(idx >= 0) list[idx] = novoRegistro;
-    else list.push(novoRegistro);
+    if(idx >= 0) list[idx] = registro; else list.push(registro);
   } else {
-    list.push(novoRegistro);
+    list.push(registro);
   }
 
-  const ok = await saveHistorico(list);
-  if(ok){
-    state._histId = novoRegistro.id; // atualiza referência para próximas edições
-    toast(histId ? 'Obra atualizada!' : 'Obra salva por ' + savedBy.nome + '!');
+  // Grava no arquivo do dono
+  let ok;
+  if(msAccount){
+    await ensureFolder();
+    const json = JSON.stringify(list, null, 2);
+    ok = await graphPut(spPath(emailParaFilename(donoEmail || eu.email)), new TextEncoder().encode(json));
   } else {
+    try{ localStorage.setItem(HIST_KEY_LOCAL, JSON.stringify(list, null, 2)); ok = true; }
+    catch(e){ ok = false; }
+  }
+
+  if(ok){
+    state._histId = registro.id;
+    state._histSavedBy = dono;
+    if(!silencioso){
+      if(histId && editandoDeOutro) toast('Obra atualizada no histórico de ' + (dono.nome || donoEmail) + '.');
+      else if(histId)              toast('Obra atualizada!');
+      else                          toast('Obra salva por ' + eu.nome + '!');
+    }
+  } else if(!silencioso){
     toast('Não foi possível salvar agora.');
   }
-});
+  return ok;
+}
+
+document.getElementById('btn-save-hist').addEventListener('click', ()=> gravarObraNoHistorico());
 
 document.querySelector('nav.tabs button[data-tab="historico"]').addEventListener('click', ()=>renderHistorico());
 
