@@ -434,6 +434,11 @@ function loadMsal(){
     <h2 class="pane-title no-print">Resumo &amp; Proposta Comercial</h2>
     <p class="pane-desc no-print">Defina a margem e o imposto para chegar ao valor da proposta. Use "Imprimir / Salvar PDF" para gerar o documento.</p>
 
+    <div id="faixa-aprovado" class="no-print" style="display:none;background:#e4f1e6;border:1px solid #1f8c33;border-left:5px solid #1f8c33;border-radius:6px;padding:12px 16px;margin-bottom:16px;">
+      <div style="font-weight:700;color:#03590f;font-size:.95rem;">🔒 Orçamento aprovado — edição bloqueada</div>
+      <div id="faixa-aprovado-detalhe" style="font-size:.82rem;color:var(--texto-suave);margin-top:4px;"></div>
+    </div>
+
     <div id="alerta-custo-alterado" class="no-print" style="display:none;background:#fdf3e6;border:1px solid var(--ferrugem);border-left:5px solid var(--ferrugem);border-radius:6px;padding:14px 16px;margin-bottom:16px;">
       <div id="alerta-custo-titulo" style="font-weight:700;color:var(--ferrugem);font-size:.92rem;margin-bottom:8px;">⚠️ Custo alterado após a autorização do preço</div>
       <div id="alerta-custo-detalhe" style="font-size:.84rem;color:var(--texto);line-height:1.6;"></div>
@@ -507,6 +512,7 @@ function loadMsal(){
 
     <div class="card no-print" style="display:flex;gap:10px;flex-wrap:wrap;">
       <button class="btn primary" id="btn-print" type="button">Imprimir / Salvar PDF</button>
+      <button class="btn ghost somente-admin" id="btn-aprovar-orcamento" type="button">✅ Aprovar orçamento</button>
       <button class="btn ghost" id="btn-save-hist" type="button">Salvar no Histórico</button>
     </div>
 
@@ -769,6 +775,7 @@ function defaultState(){
     ],
     financeiro:{desconto:0, imposto:22.15, margem:20, margemMinima:15, descontoMaximo:10, descontoLiberado:false, descontoAutorizado:0, autorizadoPor:null, custoNaAutorizacao:null, margemNaAutorizacao:null, valorNaAutorizacao:null, valorFinalManual:null},
     observacoes:'',
+    aprovacao:{ aprovado:false, por:null, em:null },
   };
 }
 
@@ -1407,6 +1414,72 @@ function recalc(){
   }
 
   aplicarTravaDesconto(r);
+  aplicarTravaAprovacao(r);
+}
+
+/* ============================================================
+   APROVAÇÃO FINAL — trava o orçamento inteiro
+   ============================================================ */
+const PANES_EDITAVEIS = ['pane-obra','pane-tarefas','pane-custos','pane-proposta'];
+// Controles que continuam ativos mesmo com o orçamento aprovado
+const LIVRES_NA_APROVACAO = ['btn-aprovar-orcamento','btn-print','btn-save-hist'];
+
+function aplicarTravaAprovacao(r){
+  const ap = state.aprovacao || {};
+  const aprovado = !!ap.aprovado;
+  const admin = (nivelAcesso() === 'admin');
+
+  document.body.classList.toggle('orcamento-aprovado', aprovado);
+
+  // Faixa informativa
+  const faixa = document.getElementById('faixa-aprovado');
+  const det   = document.getElementById('faixa-aprovado-detalhe');
+  if(faixa && det){
+    if(aprovado){
+      const quem = ap.por ? (ap.por.nome || ap.por.email) : 'administrador';
+      const quando = ap.em ? new Date(ap.em).toLocaleString('pt-BR') : '';
+      det.textContent = 'Aprovado por ' + quem + (quando ? ' em ' + quando : '') +
+        '. Nenhum campo pode ser alterado enquanto o orçamento estiver aprovado.';
+      faixa.style.display = 'block';
+    } else faixa.style.display = 'none';
+  }
+
+  // Botão: aprovar x desbloquear
+  const btn = document.getElementById('btn-aprovar-orcamento');
+  if(btn){
+    btn.textContent = aprovado ? '🔓 Desbloquear para edição' : '✅ Aprovar orçamento';
+    btn.disabled = !admin;
+  }
+
+  if(aprovado){
+    // Trava tudo nas abas de edição
+    PANES_EDITAVEIS.forEach(id=>{
+      const pane = document.getElementById(id);
+      if(!pane) return;
+      pane.querySelectorAll('input, select, textarea, button').forEach(el=>{
+        if(LIVRES_NA_APROVACAO.includes(el.id)) return;
+        el.disabled = true;
+        if(el.tagName !== 'BUTTON'){
+          el.style.background = 'var(--areia-escura)';
+          el.style.cursor = 'not-allowed';
+        }
+        el.title = 'Orçamento aprovado — edição bloqueada';
+      });
+    });
+  } else {
+    // Libera e devolve as regras normais de acesso
+    PANES_EDITAVEIS.forEach(id=>{
+      const pane = document.getElementById(id);
+      if(!pane) return;
+      pane.querySelectorAll('input, select, textarea, button').forEach(el=>{
+        el.disabled = false;
+        if(el.tagName !== 'BUTTON'){ el.style.background = '#fffdf9'; el.style.cursor = ''; }
+        el.title = '';
+      });
+    });
+    aplicarControleAcesso();      // recoloca o bloqueio dos parâmetros
+    aplicarTravaDesconto(r);      // recoloca a trava do preço autorizado
+  }
 }
 function setText(id,txt){const el=document.getElementById(id); if(el) el.textContent=txt;}
 function setVal(id,val){const el=document.getElementById(id); if(el) el.value=val;}
@@ -1470,6 +1543,46 @@ function renderProposta(){
   `;
 }
 document.getElementById('btn-print').addEventListener('click', ()=>{ renderProposta(); window.print(); });
+
+/* Aprovação final — trava o orçamento inteiro (somente admin) */
+document.getElementById('btn-aprovar-orcamento').addEventListener('click', async ()=>{
+  if(nivelAcesso() !== 'admin'){ toast('Apenas administradores podem aprovar.'); return; }
+  const ap = state.aprovacao || {};
+
+  if(ap.aprovado){
+    if(!confirm('Desbloquear este orçamento para edição?\n\nA aprovação será removida e os campos voltam a ser editáveis.')) return;
+    state.aprovacao = { aprovado:false, por:null, em:null };
+    recalc();
+    if(state._histId){
+      const ok = await gravarObraNoHistorico({ silencioso:true });
+      toast(ok ? 'Orçamento desbloqueado para edição.' : 'Desbloqueado, mas falhou ao gravar.');
+    } else toast('Orçamento desbloqueado para edição.');
+    return;
+  }
+
+  const r = LAST || compute();
+  const resumo = 'Aprovar este orçamento?\n\n' +
+    'Valor da proposta: ' + brl(r.valorFinal) + '\n' +
+    'Margem real: ' + num2(r.margemReal) + '%\n\n' +
+    'Nenhum campo poderá ser alterado enquanto estiver aprovado.';
+  if(!confirm(resumo)) return;
+
+  state.aprovacao = {
+    aprovado: true,
+    por: { nome: msAccount ? (msAccount.name || msAccount.username) : '', email: emailUsuarioAtual() },
+    em: Date.now(),
+    valorAprovado: r.valorFinal,
+    margemAprovada: r.margemReal,
+  };
+  recalc();
+
+  if(state._histId){
+    const ok = await gravarObraNoHistorico({ silencioso:true });
+    toast(ok ? 'Orçamento aprovado e bloqueado.' : 'Aprovado, mas não foi possível gravar agora.');
+  } else {
+    toast('Orçamento aprovado — salve no histórico para registrar.');
+  }
+});
 
 // Admin libera (ou retrava) o teto de desconto nesta obra — fica gravado no orçamento
 /* Sinaliza a intenção de liberar ANTES do blur do campo de desconto,
@@ -2099,6 +2212,11 @@ async function renderHistorico(filtro=''){
           }
           return '';
         })()}
+        ${(item.data.aprovacao && item.data.aprovacao.aprovado) ? `
+        <span style="display:block;margin-top:3px;font-size:.78rem;color:#03590f;font-weight:700;">
+          🔒 Aprovado${item.data.aprovacao.por ? ' por ' + escapeHtml(item.data.aprovacao.por.nome || item.data.aprovacao.por.email) : ''}${
+            item.data.aprovacao.em ? ' em ' + new Date(item.data.aprovacao.em).toLocaleDateString('pt-BR') : ''}
+        </span>` : ''}
         ${(r_item.custoAlterado || r_item.precoAlterado) ? `
         <span style="display:block;margin-top:3px;font-size:.78rem;color:var(--erro);font-weight:700;">
           ⚠️ ${r_item.precoAlterado ? 'Preço mudou após a autorização' : 'Custo alterado após a autorização'}
@@ -2845,6 +2963,7 @@ document.getElementById('inp-importar-excel').addEventListener('change', async f
           extras:    parsed.extras || base.extras,
           financeiro:{...base.financeiro,...parsed.financeiro},
           observacoes: parsed.observacoes || '',
+          aprovacao: parsed.aprovacao || { aprovado:false, por:null, em:null },
         };
         importados.push(merged);
       }catch(e){
