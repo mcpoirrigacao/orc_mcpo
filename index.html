@@ -514,6 +514,7 @@ function loadMsal(){
       <button class="btn primary" id="btn-print" type="button">Imprimir / Salvar PDF</button>
       <button class="btn ghost somente-admin" id="btn-aprovar-orcamento" type="button">✅ Aprovar orçamento</button>
       <button class="btn ghost" id="btn-save-hist" type="button">Salvar no Histórico</button>
+      <button class="btn ghost" id="btn-save-como-nova" type="button" style="display:none;">📄 Salvar como nova obra</button>
     </div>
 
     <div class="proposta-doc" id="proposta-doc"></div>
@@ -1415,6 +1416,7 @@ function recalc(){
 
   aplicarTravaDesconto(r);
   aplicarTravaAprovacao(r);
+  atualizarBotaoNovaObra();
 }
 
 /* ============================================================
@@ -1422,7 +1424,7 @@ function recalc(){
    ============================================================ */
 const PANES_EDITAVEIS = ['pane-obra','pane-tarefas','pane-custos','pane-proposta'];
 // Controles que continuam ativos mesmo com o orçamento aprovado
-const LIVRES_NA_APROVACAO = ['btn-aprovar-orcamento','btn-print','btn-save-hist'];
+const LIVRES_NA_APROVACAO = ['btn-aprovar-orcamento','btn-print','btn-save-hist','btn-save-como-nova'];
 
 function aplicarTravaAprovacao(r){
   const ap = state.aprovacao || {};
@@ -2623,6 +2625,48 @@ async function gravarObraNoHistorico({ silencioso = false } = {}){
 }
 
 document.getElementById('btn-save-hist').addEventListener('click', ()=> gravarObraNoHistorico());
+
+/* Salvar como nova obra — cria um registro independente, preservando o original.
+   O novo registro passa a pertencer a quem duplicou e nasce sem aprovação nem
+   autorização de desconto, já que é um orçamento novo. */
+document.getElementById('btn-save-como-nova').addEventListener('click', async ()=>{
+  const nomeAtual = (state.info.obra || '').trim();
+  const ok = confirm(
+    'Salvar como uma NOVA obra?\n\n' +
+    'A obra original é preservada e um novo orçamento é criado' +
+    (nomeAtual ? ' com o nome "' + nomeAtual + '"' : '') + '.\n\n' +
+    'A nova obra nasce sem aprovação e sem autorização de desconto.'
+  );
+  if(!ok) return;
+
+  // Solta o vínculo com o registro de origem
+  const origem = state._histSavedBy ? (state._histSavedBy.nome || state._histSavedBy.email) : null;
+  state._histId = null;
+  state._histSavedBy = null;
+  state._histSavedAt = null;
+
+  // Um orçamento novo não herda aprovação nem liberação de preço
+  state.aprovacao = { aprovado:false, por:null, em:null };
+  state.financeiro.descontoLiberado    = false;
+  state.financeiro.descontoAutorizado  = 0;
+  state.financeiro.autorizadoPor       = null;
+  state.financeiro.custoNaAutorizacao  = null;
+  state.financeiro.margemNaAutorizacao = null;
+  state.financeiro.valorNaAutorizacao  = null;
+  recalc();
+
+  const gravou = await gravarObraNoHistorico({ silencioso:true });
+  toast(gravou
+    ? 'Nova obra criada' + (origem ? ' a partir da obra de ' + origem : '') + '. A original foi preservada.'
+    : 'Não foi possível criar a nova obra agora.');
+  atualizarBotaoNovaObra();
+});
+
+/* O botão só faz sentido quando há uma obra do histórico aberta */
+function atualizarBotaoNovaObra(){
+  const b = document.getElementById('btn-save-como-nova');
+  if(b) b.style.display = state._histId ? '' : 'none';
+}
 
 document.querySelector('nav.tabs button[data-tab="historico"]').addEventListener('click', ()=>renderHistorico());
 
