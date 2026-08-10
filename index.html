@@ -371,7 +371,8 @@ function loadMsal(){
         <div class="costline"><div class="lbl">Hora Técnica <span class="sub">valor/hora combinado</span></div><div id="pv-hora-qtd" class="out"></div><div><input type="text" id="i-vhora" disabled style="background:var(--areia-escura);color:var(--texto-suave);width:100%;padding:6px 7px;border:1px solid var(--borda);border-radius:4px;text-align:right;font-family:var(--fonte-dado);font-size:.82rem;" title="R$/hora Técnica + (Pessoas-1) × R$/hora Auxiliar"></div><div class="out" id="pv-hora-total"></div></div>
         <div class="costline"><div class="lbl">Caminhão MCPO</div><div id="pv-caminhao-qtd" class="out"></div><div><input type="number" id="i-vcaminhao"></div><div class="out" id="pv-caminhao-total"></div></div>
         <div class="costline"><div class="lbl">Frete Máquinas MCPO</div><div id="pv-frete-qtd" class="out"></div><div><input type="number" id="i-vfrete"></div><div class="out" id="pv-frete-total"></div></div>
-        <div class="costline"><div class="lbl">Máquina PEAD <span class="sub">soldas/10 por dia</span></div><div id="pv-pead-qtd" class="out"></div><div><input type="number" id="i-vpead"></div><div class="out" id="pv-pead-total"></div></div>
+        <div class="costline"><div class="lbl">Máquina PEAD <span class="sub">locação — soldas/10 por dia</span></div><div id="pv-pead-qtd" class="out"></div><div><input type="number" id="i-vpead"></div><div class="out" id="pv-pead-total"></div></div>
+        <div class="costline"><div class="lbl">Solda PEAD <span class="sub">serviço — por solda</span></div><div id="pv-soldapead-qtd" class="out"></div><div><input type="number" id="i-vsoldapead"></div><div class="out" id="pv-soldapead-total"></div></div>
         <div class="costline"><div class="lbl">Caminhão Munck</div><div id="pv-munck-qtd" class="out"></div><div><input type="number" id="i-vmunck"></div><div class="out" id="pv-munck-total"></div></div>
       </div>
     </div>
@@ -618,6 +619,7 @@ function loadMsal(){
         <div class="field"><label>Caminhão MCPO (R$/dia)</label><input type="number" id="p-vcaminhao" step="0.01"></div>
         <div class="field"><label>Frete Máquinas (R$/km)</label><input type="number" id="p-vfrete" step="0.01"></div>
         <div class="field"><label>Máquina PEAD (R$/dia)</label><input type="number" id="p-vpead" step="0.01"></div>
+        <div class="field"><label>Solda PEAD (R$/solda)</label><input type="number" id="p-vsoldapead" step="0.01"></div>
         <div class="field"><label>Caminhão Munck (R$/dia)</label><input type="number" id="p-vmunck" step="0.01"></div>
         <div class="field"><label>Caminhão Munck (R$/mês) — acima de 16 dias</label><input type="number" id="p-vmunckmes" step="0.01"></div>
       </div>
@@ -757,7 +759,7 @@ function defaultState(){
     info:{empresa:'MAQCAMPO IRRIGAÇÃO', cliente:'', obra:'', endereco:'', vendedor:'', responsavel:'', hectares:'', numPivos:0},
     equipe:{qtdEquipes:0, auxAdicionais:0, kmDiario:0, kmOrigem:0, kmLoja:0, adcHr:0, diasTrator:0, diasCaminhao:0, diasMunck:0, casaM2:0, prazoManual:null},
     servicos:{trator:false, caminhao:false, freteMcpo:false, munck:false, escavadeira:false, basePivo:false, casaPadrao:false, maquinaPead:false, alimAlmoco:false, alimJantar:false, hospedagem:false, auxiliares:false},
-    precos:{hospedagem:80, km:3.9, refeicao:80, trator:325, horaTecnica:260, horaAuxiliar:0, caminhao:300, freteKm:8.5, maquinaPead:2500, munck:2500, munckMes:40000, freteEscavadeiraKm:13, metroEscavadeira:15, basePivo:18000, casaM2:2500, pctMontador:12, pctAuxiliar:3, tubDN350:1.45, tubDN450:1.70, tubDN600:1.80, horaEncargo:260, fatorComAux:5, fatorSemAux:2},
+    precos:{hospedagem:80, km:3.9, refeicao:80, trator:325, horaTecnica:260, horaAuxiliar:0, caminhao:300, freteKm:8.5, maquinaPead:2500, soldaPead:260, munck:2500, munckMes:40000, freteEscavadeiraKm:13, metroEscavadeira:15, basePivo:18000, casaM2:2500, pctMontador:12, pctAuxiliar:3, tubDN350:1.45, tubDN450:1.70, tubDN600:1.80, horaEncargo:260, fatorComAux:5, fatorSemAux:2},
     tasks:{},
     extras:[
       {desc:'Geomembrana', unidade:'m²', qtd:0, valorTotal:0},
@@ -916,6 +918,7 @@ const SIMPLE_BINDINGS = [
   ['i-vcaminhao','precos','caminhao','num'],
   ['i-vfrete','precos','freteKm','num'],
   ['i-vpead','precos','maquinaPead','num'],
+  ['i-vsoldapead','precos','soldaPead','num'],
   ['i-vmunck','precos','munck','num'],
   ['i-vfesc','precos','freteEscavadeiraKm','num'],
   ['i-vesc','precos','metroEscavadeira','num'],
@@ -1096,6 +1099,18 @@ function compute(){
       vMont = qtd * vu;
       vAux  = qtd * vu;
       adutoraMetros += qtd;
+    } else if(t.id === SOLDA_PEAD_ID){
+      // Solda PEAD: só existe quando a MCPO executa o serviço (caixa marcada).
+      // Desmarcada, não há pagamento à equipe nem horas no prazo.
+      horasTotal = t.horas*qtd;
+      if(state.servicos.maquinaPead){
+        vMont = t.horas*qtd*state.precos.horaEncargo*(n(state.precos.pctMontador)/100);
+        vAux  = t.horas*qtd*state.precos.horaEncargo*(n(state.precos.pctAuxiliar)/100);
+        tmoPct += horasTotal;
+      } else {
+        vMont = 0;
+        vAux  = 0;
+      }
     } else {
       horasTotal = t.horas*qtd;
       vMont = t.horas*qtd*state.precos.horaEncargo*(n(state.precos.pctMontador)/100);
@@ -1147,8 +1162,10 @@ function compute(){
   const horaTotal = horaQtd*P.horaTecnica + custoHoraAux;
   const caminhaoTotal = S.caminhao ? E.diasCaminhao*P.caminhao : 0;
   const freteTotal = S.freteMcpo ? E.kmLoja*P.freteKm*2 : 0;
-  const peadDias = ceilDiv(qtySoldaPead,10);
-  const peadTotal = S.maquinaPead ? peadDias*P.maquinaPead : 0;
+  const peadDias    = ceilDiv(qtySoldaPead,10);
+  const peadAluguel = S.maquinaPead ? peadDias*n(P.maquinaPead) : 0;   // locação da máquina
+  const peadSoldas  = S.maquinaPead ? qtySoldaPead*n(P.soldaPead) : 0; // serviço de solda
+  const peadTotal   = peadAluguel + peadSoldas;
   const munckTotal = S.munck ? (E.diasMunck<17 ? E.diasMunck*P.munck : ceilDiv(E.diasMunck,30)*P.munckMes) : 0;
 
   const totalPivos = hospTotal+kmTotal+alimTotal+tratorTotal+horaTotal+caminhaoTotal+freteTotal+peadTotal+munckTotal;
@@ -1172,7 +1189,7 @@ function compute(){
 
   Object.assign(out,{
     hospQtd,hospTotal,kmQtd,kmTotal,alimQtd,alimTotal,tratorTotal,horaQtd,horaUnit,horaTotal,
-    caminhaoTotal,freteTotal,peadDias,peadTotal,munckTotal,totalPivos,
+    caminhaoTotal,freteTotal,peadDias,peadAluguel,peadSoldas,peadTotal,munckTotal,totalPivos,
     fEscTotal,escTotal,totalAdutora,baseTotal,casaTotal,totalInfra,totalExtras,
     custoTotalObra
   });
@@ -1285,7 +1302,8 @@ function recalc(){
   setText('pv-hora-total', brl(r.horaTotal));
   setText('pv-caminhao-qtd', num2(state.equipe.diasCaminhao)); setText('pv-caminhao-total', brl(r.caminhaoTotal));
   setText('pv-frete-qtd', num2(state.equipe.kmLoja)); setText('pv-frete-total', brl(r.freteTotal));
-  setText('pv-pead-qtd', num2(r.peadDias)); setText('pv-pead-total', brl(r.peadTotal));
+  setText('pv-pead-qtd', num2(r.peadDias)); setText('pv-pead-total', brl(r.peadAluguel));
+  setText('pv-soldapead-qtd', num2(r.qtySoldaPead)); setText('pv-soldapead-total', brl(r.peadSoldas));
   setText('pv-munck-qtd', num2(state.equipe.diasMunck)); setText('pv-munck-total', brl(r.munckTotal));
 
   setText('pv-fesc-qtd', num2(state.equipe.kmLoja)); setText('pv-fesc-total', brl(r.fEscTotal));
@@ -2597,7 +2615,8 @@ async function exportarExcel(st, r){
     ['Hora Técnica', r.horaQtd, r.horaTotal],
     ['Caminhão MCPO', st.equipe.diasCaminhao, r.caminhaoTotal],
     ['Frete Máquinas MCPO', st.equipe.kmLoja, r.freteTotal],
-    ['Máquina PEAD', r.peadDias, r.peadTotal],
+    ['Máquina PEAD (locação)', r.peadDias, r.peadAluguel],
+    ['Solda PEAD (serviço)', r.qtySoldaPead, r.peadSoldas],
     ['Caminhão Munck', st.equipe.diasMunck, r.munckTotal],
     ['SUBTOTAL PIVÔS','', r.totalPivos],
     [],
@@ -2888,7 +2907,7 @@ const PARAMS_KEY_LOCAL = 'mcpo-params';
 // Os campos nas outras abas são readonly quando o usuário não é autorizado
 const PARAM_FIELD_IDS = [
   'i-vhosp','i-vkm','i-valim','i-vtrator','i-vcaminhao',
-  'i-vfrete','i-vpead','i-vmunck','i-vfesc','i-vesc','i-vbase','i-vcasa',
+  'i-vfrete','i-vpead','i-vsoldapead','i-vmunck','i-vfesc','i-vesc','i-vbase','i-vcasa',
   'i-imposto',
 ];
 
@@ -3129,7 +3148,7 @@ function renderAbaParametros(){
     'p-fatorcomaux': P.fatorComAux, 'p-fatorsemaux': P.fatorSemAux,
     'p-vhosp': P.hospedagem, 'p-vkm': P.km, 'p-valim': P.refeicao,
     'p-vtrator': P.trator, 'p-vhora': P.horaTecnica, 'p-vhoraaux': P.horaAuxiliar, 'p-vcaminhao': P.caminhao,
-    'p-vfrete': P.freteKm, 'p-vpead': P.maquinaPead, 'p-vmunck': P.munck, 'p-vmunckmes': P.munckMes,
+    'p-vfrete': P.freteKm, 'p-vpead': P.maquinaPead, 'p-vsoldapead': P.soldaPead, 'p-vmunck': P.munck, 'p-vmunckmes': P.munckMes,
     'p-vfesc': P.freteEscavadeiraKm, 'p-vesc': P.metroEscavadeira,
     'p-vbase': P.basePivo, 'p-vcasa': P.casaM2,
     'p-imposto': globalParams.imposto,
@@ -3220,6 +3239,7 @@ document.getElementById('btn-salvar-params').addEventListener('click', async ()=
     caminhao:      lv('p-vcaminhao', PA.caminhao),
     freteKm:       lv('p-vfrete', PA.freteKm),
     maquinaPead:   lv('p-vpead', PA.maquinaPead),
+    soldaPead:     lv('p-vsoldapead', PA.soldaPead),
     munck:         lv('p-vmunck', PA.munck),
     munckMes:      lv('p-vmunckmes', PA.munckMes),
     fatorComAux:   lv('p-fatorcomaux', PA.fatorComAux),
