@@ -332,32 +332,52 @@ function loadMsal(){
 
     <div class="card">
       <h3>Equipe</h3>
-      <div class="grid">
+      <div class="grid" style="max-width:720px;">
         <div class="field"><label>Qtd. de Equipes</label><input type="number" id="i-qtdequipes" min="1" step="1"></div>
         <div class="field"><label>Auxiliares Adicionais (pontuais)</label><input type="number" id="i-auxadicionais" min="0" step="1" placeholder="0"></div>
-        <div class="field readonly"><label>Qtd. de Pessoas (calculado)</label><input type="text" id="o-qtdpessoas" disabled></div>
-        <div class="field"><label>KM Diário (por equipe)</label><input type="number" id="i-kmdiario"></div>
-        <div class="field"><label>KM Adicional de Origem</label><input type="number" id="i-kmorigem"></div>
-        <div class="field"><label>Dist. KM da Loja (frete)</label><input type="number" id="i-kmloja"></div>
-        <div class="field"><label>Horas Adicionais (ADC HR)</label><input type="number" id="i-adchr"></div>
-        <div class="field readonly"><label>TMO de Obra (horas, da aba Tarefas)</label><input type="text" id="o-tmoobra" disabled></div>
-        <div class="field readonly"><label>Dias Corridos (estimado)</label><input type="text" id="o-diascorridos" disabled></div>
         <div class="field">
-          <label>Prazo Estimado (dias) — deixe em branco para calcular</label>
-          <input type="number" id="i-prazomanual" placeholder="auto">
+          <label>Composição da equipe</label>
+          <label class="checkline" style="margin-top:2px;"><input type="checkbox" id="i-chk-auxiliares"> Auxiliares na Equipe</label>
         </div>
       </div>
+      <div id="resumo-pessoas" style="margin-top:12px;background:#e4f1e6;border-radius:6px;padding:10px 14px;font-size:.88rem;color:var(--azul-escuro);"></div>
+    </div>
+
+    <div class="card">
+      <h3>Deslocamento</h3>
+      <div class="grid" style="max-width:720px;">
+        <div class="field"><label>KM Diário (por equipe)</label><input type="number" id="i-kmdiario" min="0"></div>
+        <div class="field"><label>KM Adicional de Origem</label><input type="number" id="i-kmorigem" min="0"></div>
+        <div class="field"><label>Dist. KM da Loja (frete)</label><input type="number" id="i-kmloja" min="0"></div>
+      </div>
+      <div class="note" style="margin-top:8px;">KM Diário abaixo de 25 é calculado como 25 (piso). KM de Origem conta ida e volta a cada 30 dias de obra.</div>
+    </div>
+
+    <div class="card">
+      <h3>Prazo da Obra</h3>
+      <div class="totals-strip" style="margin-top:0;">
+        <div class="total-box"><div class="label">TMO de Obra (aba Tarefas)</div><div class="value sm" id="o-tmoobra">0 h</div></div>
+        <div class="total-box"><div class="label">Dias Corridos (estimado)</div><div class="value sm" id="o-diascorridos">0 dias</div></div>
+        <div class="total-box accent"><div class="label">Prazo Estimado</div><div class="value sm" id="o-prazofinal">0 dias</div></div>
+      </div>
+      <div class="grid" style="max-width:720px;margin-top:12px;">
+        <div class="field"><label>Horas Adicionais (ADC HR)</label><input type="number" id="i-adchr" min="0" placeholder="0"></div>
+        <div class="field">
+          <label>Prazo</label>
+          <label class="checkline" style="margin-top:2px;"><input type="checkbox" id="i-chk-prazomanual"> Definir prazo manualmente</label>
+        </div>
+        <div class="field" id="wrap-prazomanual" style="display:none;">
+          <label>Prazo Estimado (dias)</label>
+          <input type="number" id="i-prazomanual" min="1" placeholder="dias">
+        </div>
+      </div>
+      <div class="note" style="margin-top:8px;">O prazo vem do TMO dividido pelas equipes, com 30% de folga para imprevistos. Defina manualmente só quando houver prazo contratado.</div>
     </div>
 
     <div class="card">
       <h3>Serviços &amp; Maquinário Contratados</h3>
+      <p class="pane-desc" style="margin-bottom:10px;">Marque o que a MCPO fornece. Os campos de uso aparecem conforme a seleção.</p>
       <div class="checks-grid" id="servicos-checks"></div>
-      <div class="grid" style="margin-top:12px;">
-        <div class="field"><label>Dias de Uso — Trator</label><input type="number" id="i-diastrator"></div>
-        <div class="field"><label>Dias de Uso — Caminhão</label><input type="number" id="i-diascaminhao"></div>
-        <div class="field"><label>Dias de Uso — Munck</label><input type="number" id="i-diasmunck"></div>
-        <div class="field"><label>Tamanho Casa de Bomba (m²)</label><input type="number" id="i-casam2"></div>
-      </div>
     </div>
 
     <div class="card">
@@ -373,7 +393,7 @@ function loadMsal(){
         <div class="costline"><div class="lbl">Frete Máquinas MCPO</div><div id="pv-frete-qtd" class="out"></div><div><input type="number" id="i-vfrete"></div><div class="out" id="pv-frete-total"></div></div>
         <div class="costline"><div class="lbl">Máquina PEAD <span class="sub">locação — soldas/10 por dia</span></div><div id="pv-pead-qtd" class="out"></div><div><input type="number" id="i-vpead"></div><div class="out" id="pv-pead-total"></div></div>
         <div class="costline"><div class="lbl">Solda PEAD <span class="sub">serviço — por solda</span></div><div id="pv-soldapead-qtd" class="out"></div><div><input type="number" id="i-vsoldapead"></div><div class="out" id="pv-soldapead-total"></div></div>
-        <div class="costline"><div class="lbl">Caminhão Munck</div><div id="pv-munck-qtd" class="out"></div><div><input type="number" id="i-vmunck"></div><div class="out" id="pv-munck-total"></div></div>
+        <div class="costline"><div class="lbl">Caminhão Munck <span class="sub" id="pv-munck-sub"></span></div><div id="pv-munck-qtd" class="out"></div><div><input type="number" id="i-vmunck"></div><div class="out" id="pv-munck-total"></div></div>
       </div>
     </div>
 
@@ -764,7 +784,7 @@ const SERVICOS_DEFS = [
 function defaultState(){
   return {
     info:{empresa:'MAQCAMPO IRRIGAÇÃO', cliente:'', obra:'', endereco:'', vendedor:'', responsavel:'', hectares:'', numPivos:0},
-    equipe:{qtdEquipes:0, auxAdicionais:0, kmDiario:0, kmOrigem:0, kmLoja:0, adcHr:0, diasTrator:0, diasCaminhao:0, diasMunck:0, casaM2:0, prazoManual:null},
+    equipe:{qtdEquipes:1, auxAdicionais:0, qtdMunck:1, kmDiario:0, kmOrigem:0, kmLoja:0, adcHr:0, diasTrator:0, diasCaminhao:0, diasMunck:0, casaM2:0, prazoManual:null},
     servicos:{trator:false, caminhao:false, freteMcpo:false, munck:false, escavadeira:false, basePivo:false, casaPadrao:false, maquinaPead:false, alimAlmoco:false, alimJantar:false, hospedagem:false, auxiliares:false},
     precos:{hospedagem:80, km:3.9, refeicao:80, trator:325, horaTecnica:260, horaAuxiliar:0, caminhao:300, freteKm:8.5, maquinaPead:2500, soldaPead:260, munck:2500, munckMes:40000, freteEscavadeiraKm:13, metroEscavadeira:15, basePivo:18000, casaM2:2500, pctMontador:12, pctAuxiliar:3, tubDN350:1.45, tubDN450:1.70, tubDN600:1.80, horaEncargo:260, fatorComAux:5, fatorSemAux:2},
     tasks:{},
@@ -848,17 +868,51 @@ function renderTasks(){
 }
 
 /* ---------- render: servicos checkboxes ---------- */
+/* Campos que só aparecem quando a máquina correspondente é contratada */
+const CAMPOS_POR_SERVICO = {
+  trator:     [{id:'i-diastrator',   label:'Dias de Uso',        key:'diasTrator',   min:0}],
+  caminhao:   [{id:'i-diascaminhao', label:'Dias de Uso',        key:'diasCaminhao', min:0}],
+  munck:      [{id:'i-diasmunck',    label:'Dias de Uso',        key:'diasMunck',    min:0},
+               {id:'i-qtdmunck',     label:'Qtd. de Caminhões',  key:'qtdMunck',     min:0, placeholder:'1'}],
+  casaPadrao: [{id:'i-casam2',       label:'Tamanho (m²)',       key:'casaM2',       min:0}],
+};
+
 function renderServicos(){
   const wrap=document.getElementById('servicos-checks');
   wrap.innerHTML='';
   SERVICOS_DEFS.forEach(s=>{
-    const lbl=document.createElement('label');
-    lbl.className='checkline';
-    lbl.innerHTML=`<input type="checkbox" data-servico="${s.key}" ${state.servicos[s.key]?'checked':''}> ${s.label}`;
-    wrap.appendChild(lbl);
+    const marcado = !!state.servicos[s.key];
+    const extras = CAMPOS_POR_SERVICO[s.key] || [];
+    const box=document.createElement('div');
+    box.style.cssText='display:flex;flex-direction:column;gap:6px;';
+    box.innerHTML=`
+      <label class="checkline"><input type="checkbox" data-servico="${s.key}" ${marcado?'checked':''}> ${s.label}</label>
+      ${extras.length ? `<div data-campos="${s.key}" style="display:${marcado?'flex':'none'};gap:6px;padding-left:8px;">
+        ${extras.map(c=>`
+          <div class="field" style="flex:1;">
+            <label style="font-size:.68rem;">${c.label}</label>
+            <input type="number" id="${c.id}" min="${c.min}" ${c.placeholder?`placeholder="${c.placeholder}"`:''} value="${n(state.equipe[c.key])||''}">
+          </div>`).join('')}
+      </div>` : ''}`;
+    wrap.appendChild(box);
   });
+
+  // Alternar caixa: mostra ou esconde os campos de uso
   wrap.querySelectorAll('input[data-servico]').forEach(cb=>{
-    cb.addEventListener('change', ()=>{ state.servicos[cb.dataset.servico]=cb.checked; recalc(); });
+    cb.addEventListener('change', ()=>{
+      const key = cb.dataset.servico;
+      state.servicos[key] = cb.checked;
+      const campos = wrap.querySelector(`[data-campos="${key}"]`);
+      if(campos) campos.style.display = cb.checked ? 'flex' : 'none';
+      recalc();
+    });
+  });
+
+  // Campos de uso gravam direto no state
+  Object.values(CAMPOS_POR_SERVICO).flat().forEach(c=>{
+    const el = document.getElementById(c.id);
+    if(!el) return;
+    el.addEventListener('input', ()=>{ state.equipe[c.key] = n(el.value); recalc(); });
   });
 }
 
@@ -913,10 +967,6 @@ const SIMPLE_BINDINGS = [
   ['i-kmorigem','equipe','kmOrigem','num'],
   ['i-kmloja','equipe','kmLoja','num'],
   ['i-adchr','equipe','adcHr','num'],
-  ['i-diastrator','equipe','diasTrator','num'],
-  ['i-diascaminhao','equipe','diasCaminhao','num'],
-  ['i-diasmunck','equipe','diasMunck','num'],
-  ['i-casam2','equipe','casaM2','num'],
   ['i-prazomanual','equipe','prazoManual','numOrNull'],
 
   ['i-vhosp','precos','hospedagem','num'],
@@ -945,6 +995,46 @@ const SIMPLE_BINDINGS = [
   ['i-valorfinal','financeiro','valorFinalManual','numOrNull'],
   ['i-observacoes','_root','observacoes','text'],
 ];
+
+/* Caixa "Auxiliares na Equipe" no card Equipe, espelhando o serviço */
+function bindControlesEquipe(){
+  const chkAux = document.getElementById('i-chk-auxiliares');
+  if(chkAux && !chkAux._ligado){
+    chkAux._ligado = true;
+    chkAux.addEventListener('change', ()=>{
+      state.servicos.auxiliares = chkAux.checked;
+      renderServicos();
+      recalc();
+    });
+  }
+
+  /* Caixa "Definir prazo manualmente" controla o campo de prazo */
+  const chkPz = document.getElementById('i-chk-prazomanual');
+  const wrapPz = document.getElementById('wrap-prazomanual');
+  const inpPz = document.getElementById('i-prazomanual');
+  if(chkPz && !chkPz._ligado){
+    chkPz._ligado = true;
+    chkPz.addEventListener('change', ()=>{
+      if(wrapPz) wrapPz.style.display = chkPz.checked ? '' : 'none';
+      if(!chkPz.checked){
+        state.equipe.prazoManual = null;
+        if(inpPz) inpPz.value = '';
+      } else if(inpPz && !inpPz.value){
+        // parte do valor calculado, para o usuário ajustar
+        const r = LAST || compute();
+        inpPz.value = r.prazoEstimado;
+        state.equipe.prazoManual = r.prazoEstimado;
+      }
+      recalc();
+    });
+  }
+  // Ao carregar uma obra com prazo manual, refletir o estado da caixa
+  if(chkPz && wrapPz){
+    const temManual = state.equipe.prazoManual != null;
+    chkPz.checked = temManual;
+    wrapPz.style.display = temManual ? '' : 'none';
+  }
+}
 
 function bindSimpleInputs(){
   SIMPLE_BINDINGS.forEach(([id,group,key,type])=>{
@@ -1146,7 +1236,7 @@ function compute(){
   const auxAdicionais = n(state.equipe.auxAdicionais) || 0;
   const pessoasBase = state.servicos.auxiliares ? qtdEquipes*n(state.precos.fatorComAux) : qtdEquipes*n(state.precos.fatorSemAux);
   const qtdPessoas = pessoasBase + auxAdicionais;
-  const diasCorridos = (n(state.equipe.adcHr)+tmoTotal)/8 + (tmoTotal/8*0.3);
+  const diasCorridos = (Math.max(0, n(state.equipe.adcHr))+tmoTotal)/8 + (tmoTotal/8*0.3);
   const prazoEstimado = (state.equipe.prazoManual!=null) ? n(state.equipe.prazoManual) : Math.max(1, ceilDiv(diasCorridos, qtdEquipes));
   out.qtdPessoas=qtdPessoas; out.diasCorridos=diasCorridos; out.prazoEstimado=prazoEstimado;
 
@@ -1164,7 +1254,7 @@ function compute(){
   const alimTotal = almocoJantar ? alimQtd*P.refeicao : (algumaRefeicao ? (alimQtd*P.refeicao)/2 : 0);
 
   const tratorTotal = S.trator ? E.diasTrator*P.trator : 0;
-  const horaQtd = n(E.adcHr)+tmoTotal;
+  const horaQtd = Math.max(0, n(E.adcHr)) + tmoTotal;
   const custoHoraAux = (qtdPessoas > 1) ? (qtdPessoas - 1) * n(P.horaAuxiliar) * horaQtd : 0;
   const horaUnit = n(P.horaTecnica) + (qtdPessoas > 1 ? (qtdPessoas - 1) * n(P.horaAuxiliar) : 0);
   const horaTotal = horaQtd*P.horaTecnica + custoHoraAux;
@@ -1174,7 +1264,8 @@ function compute(){
   const peadAluguel = S.maquinaPead ? peadDias*n(P.maquinaPead) : 0;   // locação da máquina
   const peadSoldas  = S.maquinaPead ? qtySoldaPead*n(P.soldaPead) : 0; // serviço de solda
   const peadTotal   = peadAluguel + peadSoldas;
-  const munckTotal = S.munck ? (E.diasMunck<17 ? E.diasMunck*P.munck : ceilDiv(E.diasMunck,30)*P.munckMes) : 0;
+  const qtdMunck = Math.max(1, n(E.qtdMunck) || 1);   // 0 ou vazio = 1 caminhão
+  const munckTotal = S.munck ? (E.diasMunck<17 ? E.diasMunck*P.munck : ceilDiv(E.diasMunck,30)*P.munckMes) * qtdMunck : 0;
 
   const totalPivos = hospTotal+kmTotal+alimTotal+tratorTotal+horaTotal+caminhaoTotal+freteTotal+peadTotal+munckTotal;
 
@@ -1197,7 +1288,7 @@ function compute(){
 
   Object.assign(out,{
     hospQtd,hospTotal,kmQtd,kmTotal,alimQtd,alimTotal,tratorTotal,horaQtd,horaUnit,horaTotal,
-    caminhaoTotal,freteTotal,peadDias,peadAluguel,peadSoldas,peadTotal,munckTotal,totalPivos,
+    qtdMunck,caminhaoTotal,freteTotal,peadDias,peadAluguel,peadSoldas,peadTotal,munckTotal,totalPivos,
     fEscTotal,escTotal,totalAdutora,baseTotal,casaTotal,totalInfra,totalExtras,
     custoTotalObra
   });
@@ -1297,9 +1388,25 @@ function recalc(){
   setVal('o-encargo-hora', brl(encArgHora) + ' / hora');
 
   // custos gerais
-  setVal('o-qtdpessoas', r.qtdPessoas);
-  setVal('o-tmoobra', num2(r.tmoTotal)+' h');
-  setVal('o-diascorridos', num2(r.diasCorridos)+' dias');
+  setText('o-tmoobra', num2(r.tmoTotal)+' h');
+  setText('o-diascorridos', num2(r.diasCorridos)+' dias');
+  setText('o-prazofinal', num2(r.prazoEstimado)+' dias');
+
+  // Resumo de como as pessoas foram compostas
+  const boxPessoas = document.getElementById('resumo-pessoas');
+  if(boxPessoas){
+    const eqs   = Math.max(1, n(state.equipe.qtdEquipes));
+    const fator = state.servicos.auxiliares ? n(state.precos.fatorComAux) : n(state.precos.fatorSemAux);
+    const adic  = n(state.equipe.auxAdicionais);
+    boxPessoas.innerHTML =
+      '<b>' + eqs + '</b> equipe' + (eqs>1?'s':'') + ' × <b>' + fator + '</b> pessoa' + (fator>1?'s':'') +
+      (adic ? ' + <b>' + adic + '</b> auxiliar' + (adic>1?'es':'') + ' adicional' + (adic>1?'is':'') : '') +
+      ' = <b style="font-size:1.05rem;">' + r.qtdPessoas + ' pessoas</b> na obra';
+  }
+
+  // Caixa de auxiliares espelhada no card Equipe
+  const chkAux = document.getElementById('i-chk-auxiliares');
+  if(chkAux) chkAux.checked = !!state.servicos.auxiliares;
 
   setText('pv-hosp-qtd', num2(r.hospQtd)); setText('pv-hosp-total', brl(r.hospTotal));
   setText('pv-km-qtd', num2(r.kmQtd)); setText('pv-km-total', brl(r.kmTotal));
@@ -1312,7 +1419,8 @@ function recalc(){
   setText('pv-frete-qtd', num2(state.equipe.kmLoja)); setText('pv-frete-total', brl(r.freteTotal));
   setText('pv-pead-qtd', num2(r.peadDias)); setText('pv-pead-total', brl(r.peadAluguel));
   setText('pv-soldapead-qtd', num2(r.qtySoldaPead)); setText('pv-soldapead-total', brl(r.peadSoldas));
-  setText('pv-munck-qtd', num2(state.equipe.diasMunck)); setText('pv-munck-total', brl(r.munckTotal));
+  setText('pv-munck-qtd', num2(state.equipe.diasMunck));
+  setText('pv-munck-sub', r.qtdMunck > 1 ? r.qtdMunck + ' caminhões' : '1 caminhão'); setText('pv-munck-total', brl(r.munckTotal));
 
   setText('pv-fesc-qtd', num2(state.equipe.kmLoja)); setText('pv-fesc-total', brl(r.fEscTotal));
   setText('pv-esc-qtd', num2(r.adutoraMetros)); setText('pv-esc-total', brl(r.escTotal));
@@ -2779,7 +2887,7 @@ async function exportarExcel(st, r){
     ['Frete Máquinas MCPO', st.equipe.kmLoja, r.freteTotal],
     ['Máquina PEAD (locação)', r.peadDias, r.peadAluguel],
     ['Solda PEAD (serviço)', r.qtySoldaPead, r.peadSoldas],
-    ['Caminhão Munck', st.equipe.diasMunck, r.munckTotal],
+    ['Caminhão Munck', st.equipe.diasMunck + ' dia(s) × ' + Math.max(1, n(st.equipe.qtdMunck)||1) + ' caminhão(ões)', r.munckTotal],
     ['SUBTOTAL PIVÔS','', r.totalPivos],
     [],
     ['CUSTOS — ADUTORA & INFRAESTRUTURA','Qtd','Total (R$)'],
@@ -3057,6 +3165,7 @@ function renderAll(){
   renderExtras();
   fillSimpleInputsFromState();
   bindSimpleInputs();
+  bindControlesEquipe();
   recalc();
 }
 renderAll();
