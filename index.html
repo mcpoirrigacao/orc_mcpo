@@ -873,7 +873,7 @@ const CAMPOS_POR_SERVICO = {
   trator:     [{id:'i-diastrator',   label:'Dias de Uso',        key:'diasTrator',   min:0}],
   caminhao:   [{id:'i-diascaminhao', label:'Dias de Uso',        key:'diasCaminhao', min:0}],
   munck:      [{id:'i-diasmunck',    label:'Dias de Uso',        key:'diasMunck',    min:0},
-               {id:'i-qtdmunck',     label:'Qtd. de Caminhões',  key:'qtdMunck',     min:0, placeholder:'1'}],
+               {id:'i-qtdmunck',     label:'Qtd. Caminhões',  key:'qtdMunck',     min:0, placeholder:'1'}],
   casaPadrao: [{id:'i-casam2',       label:'Tamanho (m²)',       key:'casaM2',       min:0}],
 };
 
@@ -884,14 +884,14 @@ function renderServicos(){
     const marcado = !!state.servicos[s.key];
     const extras = CAMPOS_POR_SERVICO[s.key] || [];
     const box=document.createElement('div');
-    box.style.cssText='display:flex;flex-direction:column;gap:6px;';
+    box.style.cssText='display:flex;flex-direction:column;gap:6px;min-width:0;position:relative;';
     box.innerHTML=`
       <label class="checkline"><input type="checkbox" data-servico="${s.key}" ${marcado?'checked':''}> ${s.label}</label>
-      ${extras.length ? `<div data-campos="${s.key}" style="display:${marcado?'flex':'none'};gap:6px;padding-left:8px;">
+      ${extras.length ? `<div data-campos="${s.key}" style="display:${marcado?'flex':'none'};gap:6px;padding-left:8px;min-width:0;position:relative;z-index:2;">
         ${extras.map(c=>`
-          <div class="field" style="flex:1;">
-            <label style="font-size:.68rem;">${c.label}</label>
-            <input type="number" id="${c.id}" min="${c.min}" ${c.placeholder?`placeholder="${c.placeholder}"`:''} value="${n(state.equipe[c.key])||''}">
+          <div class="field" style="flex:1;min-width:0;">
+            <label style="font-size:.68rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${c.label}</label>
+            <input type="number" style="width:100%;min-width:0;" id="${c.id}" min="${c.min}" ${c.placeholder?`placeholder="${c.placeholder}"`:''} value="${n(state.equipe[c.key])||''}">
           </div>`).join('')}
       </div>` : ''}`;
     wrap.appendChild(box);
