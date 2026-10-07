@@ -2287,16 +2287,31 @@ async function salvarExcelOneDrive(wbBytes, filename){
 
 let _histCache = [];
 
-async function renderHistorico(filtro=''){
+/* ---------- Paginação do histórico ---------- */
+const HIST_POR_PAGINA = 15;
+let _histPagina = 1;
+let _histFiltroAnterior = null;
+
+/* recarregar:false reaproveita o cache — usado ao trocar de página,
+   para não reler todos os arquivos do SharePoint a cada clique */
+async function renderHistorico(filtro='', { recarregar = true } = {}){
   const wrap = document.getElementById('hist-list');
-  wrap.innerHTML = '<div class="empty-state">Carregando histórico...</div>';
-  _histCache = await loadHistorico();
+  if(recarregar){
+    wrap.innerHTML = '<div class="empty-state">Carregando histórico...</div>';
+    _histCache = await loadHistorico();
+  }
 
   const nivel = nivelAcesso();
 
   // Filtro de busca
   const busca = filtro.toLowerCase().trim();
-  let lista = _histCache.slice().reverse();
+  // Mais recente primeiro — pela data de gravação, não pela ordem dentro do arquivo.
+  // Importante para admin/gestor, que leem vários arquivos de usuários diferentes.
+  let lista = _histCache.slice().sort((a,b)=>{
+    const da = Number(a.savedAt) || 0;
+    const db = Number(b.savedAt) || 0;
+    return db - da;
+  });
   if(busca){
     lista = lista.filter(item=>
       (item.data.info.cliente||'').toLowerCase().includes(busca) ||
@@ -2304,6 +2319,9 @@ async function renderHistorico(filtro=''){
       (item.data.info.vendedor||'').toLowerCase().includes(busca)
     );
   }
+
+  // Busca nova sempre recomeça da primeira página
+  if(_histFiltroAnterior !== busca){ _histPagina = 1; _histFiltroAnterior = busca; }
 
   if(!_histCache.length){
     wrap.innerHTML = nivel === 'comum'
@@ -2315,8 +2333,16 @@ async function renderHistorico(filtro=''){
     wrap.innerHTML = '<div class="empty-state">Nenhuma obra encontrada para "'+filtro+'".</div>';
     return;
   }
+
+  // Recorta a página atual (clampa caso obras tenham sido excluídas)
+  const totalPaginas = Math.max(1, Math.ceil(lista.length / HIST_POR_PAGINA));
+  if(_histPagina > totalPaginas) _histPagina = totalPaginas;
+  if(_histPagina < 1) _histPagina = 1;
+  const inicio = (_histPagina - 1) * HIST_POR_PAGINA;
+  const daPagina = lista.slice(inicio, inicio + HIST_POR_PAGINA);
+
   wrap.innerHTML='';
-  lista.forEach(item=>{
+  daPagina.forEach(item=>{
     const r_item = computeFromState(item.data);
     const div=document.createElement('div');
     div.className='hist-item';
@@ -2442,6 +2468,77 @@ async function renderHistorico(filtro=''){
       toast(ok ? 'Obra enviada para a lixeira.' : 'Não foi possível excluir agora.');
     });
   });
+
+  renderPaginacaoHistorico(wrap, {
+    total: lista.length,
+    totalPaginas,
+    inicio,
+    nestaPagina: daPagina.length,
+    filtro,
+  });
+}
+
+/* Barra de paginação do histórico — 15 obras por página */
+function renderPaginacaoHistorico(wrap, { total, totalPaginas, inicio, nestaPagina, filtro }){
+  const barra = document.createElement('div');
+  barra.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-top:14px;padding-top:12px;border-top:1px solid var(--areia-escura);';
+
+  const de = inicio + 1;
+  const ate = inicio + nestaPagina;
+  const contagem = document.createElement('span');
+  contagem.style.cssText = 'font-size:.82rem;color:var(--texto-suave);';
+  contagem.textContent = `Mostrando ${de}–${ate} de ${total} obra${total === 1 ? '' : 's'}` +
+    (totalPaginas > 1 ? `  ·  página ${_histPagina} de ${totalPaginas}` : '');
+  barra.appendChild(contagem);
+
+  if(totalPaginas > 1){
+    const nav = document.createElement('div');
+    nav.style.cssText = 'display:flex;align-items:center;gap:6px;flex-wrap:wrap;';
+
+    const botao = (rotulo, pagina, { desabilitado = false, atual = false } = {})=>{
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = atual ? 'btn primary small' : 'btn ghost small';
+      b.textContent = rotulo;
+      b.disabled = desabilitado;
+      if(desabilitado) b.style.opacity = '.45';
+      if(!desabilitado && !atual) b.dataset.pag = String(pagina);
+      if(atual) b.style.minWidth = '34px';
+      return b;
+    };
+
+    nav.appendChild(botao('‹ Anterior', _histPagina - 1, { desabilitado: _histPagina === 1 }));
+
+    // Janela de páginas: primeira, vizinhas da atual, última — com reticências
+    const paginas = new Set([1, totalPaginas, _histPagina, _histPagina - 1, _histPagina + 1]);
+    const visiveis = [...paginas].filter(p => p >= 1 && p <= totalPaginas).sort((a,b)=>a-b);
+    let anterior = 0;
+    visiveis.forEach(p=>{
+      if(p - anterior > 1){
+        const sep = document.createElement('span');
+        sep.textContent = '…';
+        sep.style.cssText = 'color:var(--texto-suave);padding:0 2px;';
+        nav.appendChild(sep);
+      }
+      nav.appendChild(botao(String(p), p, { atual: p === _histPagina }));
+      anterior = p;
+    });
+
+    nav.appendChild(botao('Próxima ›', _histPagina + 1, { desabilitado: _histPagina === totalPaginas }));
+    barra.appendChild(nav);
+
+    nav.querySelectorAll('button[data-pag]').forEach(b=>{
+      b.addEventListener('click', ()=>{
+        _histPagina = Number(b.dataset.pag);
+        renderHistorico(filtro, { recarregar:false });
+        // volta o foco para o topo da lista ao trocar de página
+        const topo = document.getElementById('pane-historico');
+        if(topo && topo.scrollIntoView) topo.scrollIntoView({ behavior:'smooth', block:'start' });
+      });
+    });
+  }
+
+  wrap.appendChild(barra);
 }
 
 /* ============================================================
@@ -2824,7 +2921,10 @@ function atualizarBotaoNovaObra(){
   if(b) b.style.display = state._histId ? '' : 'none';
 }
 
-document.querySelector('nav.tabs button[data-tab="historico"]').addEventListener('click', ()=>renderHistorico());
+document.querySelector('nav.tabs button[data-tab="historico"]').addEventListener('click', ()=>{
+  _histPagina = 1;   // ao entrar na aba, começa pelas obras mais recentes
+  renderHistorico(document.getElementById('hist-busca').value);
+});
 
 /* ============================================================
    HELPER: compute a partir de um state externo (para histórico)
