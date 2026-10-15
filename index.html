@@ -485,7 +485,12 @@ function loadMsal(){
               <td style="padding:8px 10px;text-align:right;font-family:var(--fonte-dado);font-weight:700;color:var(--azul-escuro);" id="prec-custototal">R$ 0</td>
             </tr>
             <tr style="border-bottom:1px solid var(--areia-escura);">
-              <td style="padding:8px 10px;font-weight:600;">Imposto (%)</td>
+              <td style="padding:8px 10px;font-weight:600;">
+                Imposto (%)
+                <span id="aviso-imposto-historico" class="no-print" style="display:none;font-weight:400;font-size:.76rem;color:var(--ferrugem);margin-top:3px;">
+                  🔒 Alíquota da data desta obra — o parâmetro atual é <b id="aviso-imposto-atual">—</b>%
+                </span>
+              </td>
               <td style="padding:8px 10px;text-align:right;"><input type="number" id="i-imposto" step="0.01" style="width:120px;padding:6px 8px;border:1px solid var(--borda);border-radius:4px;text-align:right;font-family:var(--fonte-dado);font-size:.85rem;background:#fffdf9;"></td>
             </tr>
             <tr style="border-bottom:1px solid var(--areia-escura);">
@@ -1553,6 +1558,7 @@ function recalc(){
   aplicarTravaDesconto(r);
   aplicarTravaAprovacao(r);
   atualizarBotaoNovaObra();
+  atualizarAvisoImposto();
   // por último: a trava de aprovação reabilita botões, então o modo
   // somente leitura do gestor tem de ser reaplicado depois dela
   atualizarAvisoSomenteLeitura();
@@ -2416,16 +2422,24 @@ async function renderHistorico(filtro='', { recarregar = true } = {}){
         state._histSavedBy = item.savedBy;
         state._histSavedAt = item.savedAt;   // base para detectar edição concorrente
         state._somenteLeitura = soLeitura;   // gestor abrindo obra de outro usuário
-        // Parâmetros globais sempre prevalecem sobre os salvos na obra
-        // (a liberação de desconto é da obra e por isso não é sobrescrita)
-        Object.assign(state.precos, globalParams.precos);
-        state.financeiro.imposto        = globalParams.imposto;
-        state.financeiro.margemMinima   = globalParams.margemMinima;
-        state.financeiro.descontoMaximo = globalParams.descontoMaximo;
+
+        // Obra aprovada abre exatamente como foi aprovada — nada é reaplicado.
+        // Nas demais, preços e política comercial seguem o parâmetro vigente,
+        // mas o IMPOSTO permanece o da data da obra (a liberação de desconto
+        // também é da obra e por isso nunca é sobrescrita).
+        if(!obraCongelada()){
+          Object.assign(state.precos, globalParams.precos);
+          state.financeiro.margemMinima   = globalParams.margemMinima;
+          state.financeiro.descontoMaximo = globalParams.descontoMaximo;
+          if(!obraMantemImpostoSalvo()) state.financeiro.imposto = globalParams.imposto;
+        }
+
         renderAll();
         toast(soLeitura
           ? '👁 Obra aberta em modo somente leitura — alterações não serão salvas.'
-          : 'Obra carregada — ao salvar, irá sobrescrever este registro.');
+          : obraCongelada()
+            ? '🔒 Obra aprovada — aberta com os valores originais.'
+            : 'Obra carregada — ao salvar, irá sobrescrever este registro.');
         document.querySelector('nav.tabs button[data-tab="obra"]').click();
       }
     });
@@ -2887,7 +2901,8 @@ document.getElementById('btn-save-como-nova').addEventListener('click', async ()
     'Salvar como uma NOVA obra?\n\n' +
     'A obra original é preservada e um novo orçamento é criado' +
     (nomeAtual ? ' com o nome "' + nomeAtual + '"' : '') + '.\n\n' +
-    'A nova obra nasce sem aprovação e sem autorização de desconto.'
+    'A nova obra nasce sem aprovação e sem autorização de desconto, ' +
+    'e passa a usar os parâmetros atuais (inclusive o imposto vigente).'
   );
   if(!ok) return;
 
@@ -2900,6 +2915,11 @@ document.getElementById('btn-save-como-nova').addEventListener('click', async ()
 
   // Um orçamento novo não herda aprovação nem liberação de preço
   state.aprovacao = { aprovado:false, por:null, em:null };
+  // Obra nova nasce com os parâmetros de hoje, inclusive a alíquota vigente
+  Object.assign(state.precos, globalParams.precos);
+  state.financeiro.imposto        = globalParams.imposto;
+  state.financeiro.margemMinima   = globalParams.margemMinima;
+  state.financeiro.descontoMaximo = globalParams.descontoMaximo;
   state.financeiro.descontoLiberado    = false;
   state.financeiro.descontoAutorizado  = 0;
   state.financeiro.autorizadoPor       = null;
@@ -3510,22 +3530,63 @@ function aplicarControleAcesso(){
   if(btnAddGestor) btnAddGestor.disabled = nivel !== 'admin';
 }
 
+/* Obra aprovada fica congelada: nenhum parâmetro novo entra nela */
+function obraCongelada(s){
+  const st = s || state;
+  return !!(st.aprovacao && st.aprovacao.aprovado);
+}
+
+/* O imposto é um fato da data da obra, não política comercial:
+   obra vinda do histórico mantém a alíquota com que foi calculada. */
+function obraMantemImpostoSalvo(s){
+  const st = s || state;
+  if(obraCongelada(st)) return true;
+  if(!st._histId) return false;                       // obra nova usa o parâmetro atual
+  const imp = st.financeiro ? st.financeiro.imposto : null;
+  return imp !== null && imp !== undefined && imp !== '';  // registro antigo sem alíquota cai no global
+}
+
 function aplicarParamsAoState(){
-  // Copia os preços globais para o state atual
-  Object.assign(state.precos, globalParams.precos);
-  state.financeiro.imposto = globalParams.imposto;
-  state.financeiro.margemMinima  = globalParams.margemMinima;
-  state.financeiro.descontoMaximo = globalParams.descontoMaximo;
-  // Margem: aplica o padrão apenas se a obra ainda não tem margem definida
-  if(!n(state.financeiro.margem)) state.financeiro.margem = globalParams.margemPadrao;
-  // Nunca abaixo do piso
-  if(n(state.financeiro.margem) < n(globalParams.margemMinima)){
-    state.financeiro.margem = globalParams.margemMinima;
+  const congelada = obraCongelada();
+
+  if(!congelada){
+    // Preços e política comercial seguem sempre o parâmetro vigente
+    Object.assign(state.precos, globalParams.precos);
+    state.financeiro.margemMinima   = globalParams.margemMinima;
+    state.financeiro.descontoMaximo = globalParams.descontoMaximo;
+
+    // Imposto: só a obra nova recebe a alíquota de hoje
+    if(!obraMantemImpostoSalvo()) state.financeiro.imposto = globalParams.imposto;
+
+    // Margem: aplica o padrão apenas se a obra ainda não tem margem definida
+    if(!n(state.financeiro.margem)) state.financeiro.margem = globalParams.margemPadrao;
+    // Nunca abaixo do piso
+    if(n(state.financeiro.margem) < n(globalParams.margemMinima)){
+      state.financeiro.margem = globalParams.margemMinima;
+    }
   }
+
   const avisoMin = document.getElementById('aviso-margem-min');
-  if(avisoMin) avisoMin.textContent = num2(globalParams.margemMinima) + '%';
+  if(avisoMin) avisoMin.textContent = num2(n(state.financeiro.margemMinima)) + '%';
   fillSimpleInputsFromState();
   recalc();
+}
+
+/* Mostra, ao lado do imposto, que a obra está usando a alíquota histórica */
+function atualizarAvisoImposto(){
+  const box = document.getElementById('aviso-imposto-historico');
+  if(!box) return;
+  // recalc() roda no render inicial, antes de globalParams ser declarado
+  let atual;
+  try{ atual = n(globalParams.imposto); }
+  catch(e){ return; }
+  const daObra  = n(state.financeiro.imposto);
+  const diverge = obraMantemImpostoSalvo() && Math.abs(daObra - atual) > 0.001;
+  box.style.display = diverge ? 'block' : 'none';
+  if(diverge){
+    const el = document.getElementById('aviso-imposto-atual');
+    if(el) el.textContent = num2(atual);
+  }
 }
 
 async function carregarEAplicarParams(){
