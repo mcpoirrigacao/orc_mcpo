@@ -221,7 +221,7 @@ function loadMsal(){
   .toast{
     position:fixed;bottom:18px;left:50%;transform:translateX(-50%) translateY(20px);
     background:var(--azul-escuro);color:#fff;padding:10px 18px;border-radius:20px;font-size:.82rem;
-    opacity:0;transition:opacity .25s, transform .25s;pointer-events:none;z-index:200;box-shadow:0 4px 16px rgba(0,0,0,.3);
+    opacity:0;transition:opacity .25s, transform .25s;pointer-events:none;z-index:1100;box-shadow:0 4px 16px rgba(0,0,0,.3);
   }
   .toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
 
@@ -725,6 +725,7 @@ function loadMsal(){
     <h2 style="font-family:var(--fonte-titulo);font-size:1.05rem;color:var(--azul-escuro);margin:0 0 10px;">Portal de Orçamentos</h2>
     <p style="color:var(--texto-suave);font-size:.9rem;margin:0 0 24px;">Faça login com sua conta Microsoft para acessar o sistema.</p>
     <button id="btn-login-overlay" class="btn primary" style="width:100%;font-size:.95rem;padding:12px;" type="button">🔑 Entrar com Microsoft</button>
+    <div id="login-erro" style="display:none;margin-top:16px;padding:10px 12px;border:1px solid #e0b4b0;border-left:4px solid var(--erro);border-radius:4px;background:#fdf1f0;font-size:.82rem;color:#7d2621;text-align:left;line-height:1.45;"></div>
   </div>
 </div>
 
@@ -840,6 +841,22 @@ function brl(v){return (v||0).toLocaleString('pt-BR',{style:'currency',currency:
 function num2(v){return (v||0).toLocaleString('pt-BR',{maximumFractionDigits:2});}
 function ceilDiv(a,b){ if(b<=0) return 0; return Math.ceil(a/b); }
 function escapeHtml(s){ const d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
+/* Erro de login mostrado DENTRO do cartão de acesso.
+   O overlay cobre a tela inteira, então um toast sozinho passa despercebido. */
+function mostrarErroLogin(msg, detalhe){
+  const box = document.getElementById('login-erro');
+  if(box){
+    box.innerHTML = '<b>Não foi possível entrar.</b><br>' + msg +
+      (detalhe ? '<br><span style="font-size:.75rem;opacity:.8;">' + escapeHtml(String(detalhe)) + '</span>' : '');
+    box.style.display = 'block';
+  }
+  toast(msg.replace(/<[^>]+>/g, ''));
+}
+function limparErroLogin(){
+  const box = document.getElementById('login-erro');
+  if(box){ box.style.display = 'none'; box.innerHTML = ''; }
+}
+
 function toast(msg){
   const t=document.getElementById('toast');
   t.textContent=msg; t.classList.add('show');
@@ -1927,6 +1944,10 @@ async function initMsal(){
     document.getElementById('ms-login-label').textContent = '🔑 Entrar com Microsoft';
     document.getElementById('ms-user-info').textContent = '(histórico local — login indisponível)';
     document.getElementById('ms-user-info').style.display = 'block';
+    mostrarErroLogin(
+      'A biblioteca de autenticação da Microsoft não carregou. Isso costuma ser bloqueio de rede ' +
+      'ou de extensão do navegador sobre <code>cdn.jsdelivr.net</code> e <code>alcdn.msauth.net</code>. ' +
+      'Tente outra rede, ou uma janela anônima sem extensões.', e && e.message);
     updateLoginUI();
   }
 }
@@ -1957,7 +1978,8 @@ document.getElementById('btn-ms-login').addEventListener('click', async ()=>{
       tentativas++;
     }
     if(!msalInstance){
-      toast('Não foi possível inicializar a autenticação. Recarregue a página.');
+      mostrarErroLogin('A autenticação não terminou de inicializar. Recarregue a página com <b>Ctrl+F5</b>. ' +
+        'Se continuar, é provável que a rede esteja bloqueando a biblioteca da Microsoft.');
       document.getElementById('ms-login-label').textContent = '🔑 Entrar com Microsoft';
       return;
     }
@@ -1972,6 +1994,7 @@ document.getElementById('btn-ms-login').addEventListener('click', async ()=>{
   }
   try{
     document.getElementById('ms-login-label').textContent = '⏳ Abrindo login...';
+    limparErroLogin();
     const resp = await msalInstance.loginPopup({ scopes: GRAPH_SCOPES });
     msAccount = resp.account;
     updateLoginUI();
@@ -1980,16 +2003,21 @@ document.getElementById('btn-ms-login').addEventListener('click', async ()=>{
   }catch(e){
     console.error('Login error:', e);
     document.getElementById('ms-login-label').textContent = '🔑 Entrar com Microsoft';
-    if(e.errorCode === 'popup_window_error' || (e.message||'').includes('popup')){
-      toast('Popup bloqueado — clique no ícone 🚫 na barra do navegador e permita popups para este site.');
-    } else if((e.message||'').includes('redirect') || e.errorCode === 'redirect_uri_mismatch'){
-      toast('Erro de configuração Azure. Verifique se o Redirect URI está cadastrado corretamente.');
+    const cod = e.errorCode || '';
+    const msg = e.message || '';
+    if(cod === 'popup_window_error' || cod === 'empty_window_error' || msg.includes('popup')){
+      mostrarErroLogin('O navegador bloqueou a janela de login. Clique no ícone 🚫 à direita da barra de ' +
+        'endereço e escolha <b>"Sempre permitir pop-ups deste site"</b>, depois tente de novo.', cod);
+    } else if(msg.includes('redirect') || cod === 'redirect_uri_mismatch'){
+      mostrarErroLogin('O endereço de retorno não confere com o cadastrado no Azure. Confira se ' +
+        '<code>' + escapeHtml(getRedirectUri()) + '</code> está registrado como Redirect URI do tipo <b>SPA</b>.', cod);
       console.error('redirectUri usado:', getRedirectUri());
-    } else if(e.errorCode === 'user_cancelled'){
+    } else if(cod === 'user_cancelled'){
+      limparErroLogin();
       toast('Login cancelado.');
-      document.getElementById('ms-login-label').textContent = '🔑 Entrar com Microsoft';
     } else {
-      toast('Erro: ' + (e.errorCode || e.message || 'desconhecido'));
+      mostrarErroLogin('A Microsoft recusou o login. O código abaixo diz o motivo — envie para quem ' +
+        'administra o app se não for claro.', cod || msg || 'desconhecido');
     }
   }
 });
@@ -3897,17 +3925,25 @@ document.addEventListener('keydown', e=>{
   }
 });
 
-// 5 cliques rápidos no título (mobile friendly)
-document.querySelector('.brand-mark').style.cursor = 'pointer';
-document.querySelector('.brand-mark').addEventListener('click', ()=>{
-  cliquesLogo++;
-  clearTimeout(timerCliquesLogo);
-  timerCliquesLogo = setTimeout(()=>{ cliquesLogo = 0; }, 2000);
-  if(cliquesLogo >= 5){
-    cliquesLogo = 0;
-    tentarAcessoAdmin();
-  }
-});
+// 5 cliques rápidos na marca (mobile friendly)
+// Aceita .brand-id (padrão atual) e .brand-mark (apps antigos). Se a marca não
+// for encontrada, apenas não liga o atalho — nunca derruba o restante do script,
+// que é o que inicializa o login.
+const _marca = document.querySelector('.brand-id, .brand-mark, .brand-logo');
+if(_marca){
+  _marca.style.cursor = 'pointer';
+  _marca.addEventListener('click', ()=>{
+    cliquesLogo++;
+    clearTimeout(timerCliquesLogo);
+    timerCliquesLogo = setTimeout(()=>{ cliquesLogo = 0; }, 2000);
+    if(cliquesLogo >= 5){
+      cliquesLogo = 0;
+      tentarAcessoAdmin();
+    }
+  });
+} else {
+  console.warn('Marca não encontrada — atalho de configuração inicial desativado.');
+}
 
 // Botão de login no overlay inicial
 document.getElementById('btn-login-overlay').addEventListener('click', ()=>{
