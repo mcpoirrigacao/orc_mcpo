@@ -1114,6 +1114,22 @@ function bindSimpleInputs(){
     });
   }
 
+  // Imposto: ajuste do admin fica marcado como manual, para que uma recarga de
+  // parâmetros não devolva a alíquota padrão por cima do que ele definiu aqui
+  const elImp = document.getElementById('i-imposto');
+  if(elImp && !elImp._manualLigado){
+    elImp._manualLigado = true;
+    elImp.addEventListener('change', ()=>{
+      if(nivelAcesso() !== 'admin') return;
+      let padrao;
+      try{ padrao = n(globalParams.imposto); }catch(e){ return; }
+      const digitado = n(state.financeiro.imposto);
+      // Voltar ao valor de Parâmetros desfaz a marcação e a obra volta a seguir o padrão
+      state.financeiro.impostoManual = Math.abs(digitado - padrao) > 0.001;
+      recalc();
+    });
+  }
+
   // Desconto: teto vale sempre, exceto quando o admin liberou esta obra
   const elDesc = document.getElementById('i-desconto');
   if(elDesc && !elDesc._tetoLigado){
@@ -2946,6 +2962,7 @@ document.getElementById('btn-save-como-nova').addEventListener('click', async ()
   // Obra nova nasce com os parâmetros de hoje, inclusive a alíquota vigente
   Object.assign(state.precos, globalParams.precos);
   state.financeiro.imposto        = globalParams.imposto;
+  state.financeiro.impostoManual  = false;   // cópia nova volta ao padrão de Parâmetros
   state.financeiro.margemMinima   = globalParams.margemMinima;
   state.financeiro.descontoMaximo = globalParams.descontoMaximo;
   state.financeiro.descontoLiberado    = false;
@@ -3401,8 +3418,9 @@ const PARAMS_KEY_LOCAL = 'mcpo-params';
 const PARAM_FIELD_IDS = [
   'i-vhosp','i-vkm','i-valim','i-vtrator','i-vcaminhao',
   'i-vfrete','i-vpead','i-vsoldapead','i-vmunck','i-vfesc','i-vesc','i-vbase','i-vcasa',
-  'i-imposto',
 ];
+// i-imposto fica fora da lista acima: o admin pode ajustá-lo direto na proposta,
+// obra a obra. Para os demais niveis continua travado no padrão de Parâmetros.
 
 async function loadParams(){
   if(msAccount){
@@ -3541,6 +3559,18 @@ function aplicarControleAcesso(){
     el.title = 'Editável apenas na aba Parâmetros por administradores';
   });
 
+  // 4b — Imposto na proposta: o admin ajusta obra a obra; os demais ficam no padrão
+  const elImposto = document.getElementById('i-imposto');
+  if(elImposto){
+    const podeEditar = (nivel === 'admin');
+    elImposto.disabled = !podeEditar;
+    elImposto.style.background = podeEditar ? '#fffdf9' : 'var(--areia-escura)';
+    elImposto.style.cursor = podeEditar ? '' : 'not-allowed';
+    elImposto.title = podeEditar
+      ? 'Você pode ajustar o imposto desta obra. O padrão vem da aba Parâmetros.'
+      : 'Imposto padrão definido em Parâmetros — somente administradores alteram.';
+  }
+
   // 5 — Campos p-* na aba parâmetros — só admin
   document.querySelectorAll('#pane-parametros input[type=number], #pane-parametros input[type=text]').forEach(el=>{
     if(el.id === 'inp-novo-email' || el.id === 'inp-novo-email-comum' || el.id === 'inp-novo-email-gestor') return;
@@ -3569,6 +3599,8 @@ function obraCongelada(s){
 function obraMantemImpostoSalvo(s){
   const st = s || state;
   if(obraCongelada(st)) return true;
+  // Admin ajustou o imposto desta obra na proposta: o ajuste manda sobre o parâmetro
+  if(st.financeiro && st.financeiro.impostoManual) return true;
   if(!st._histId) return false;                       // obra nova usa o parâmetro atual
   const imp = st.financeiro ? st.financeiro.imposto : null;
   return imp !== null && imp !== undefined && imp !== '';  // registro antigo sem alíquota cai no global
@@ -3612,6 +3644,10 @@ function atualizarAvisoImposto(){
   const diverge = obraMantemImpostoSalvo() && Math.abs(daObra - atual) > 0.001;
   box.style.display = diverge ? 'block' : 'none';
   if(diverge){
+    const manual = !!state.financeiro.impostoManual;
+    box.innerHTML = (manual
+        ? '✏️ Imposto ajustado para esta obra — o parâmetro atual é <b id="aviso-imposto-atual">—</b>%'
+        : '🔒 Alíquota da data desta obra — o parâmetro atual é <b id="aviso-imposto-atual">—</b>%');
     const el = document.getElementById('aviso-imposto-atual');
     if(el) el.textContent = num2(atual);
   }
